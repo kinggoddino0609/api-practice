@@ -1,9 +1,13 @@
 import json
 from datetime import date as Date
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+import models
+from database import Base, engine, get_db
 
 
 app = FastAPI(
@@ -11,8 +15,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-
-DATA_FILE = Path(__file__).resolve().parent / "data.json"
+Base.metadata.create_all(bind=engine)
 
 
 class RecordIn(BaseModel):
@@ -25,30 +28,6 @@ class RecordIn(BaseModel):
     steps: int = Field(default=0, ge=0)
     sleep_hours: float = Field(default=0.0, ge=0)
     memo: str = ""
-
-
-def load_records():
-    if not DATA_FILE.exists():
-        return []
-
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-            return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def save_records():
-    with open(DATA_FILE, "w", encoding="utf-8") as file:
-        json.dump(records, file, ensure_ascii=False, indent=2)
-
-
-records = load_records()
-next_id = max(
-    (record.get("id", 0) for record in records),
-    default=0
-) + 1
 
 
 def analyze_health(record: RecordIn):
@@ -98,120 +77,155 @@ def analyze_health(record: RecordIn):
     }
 
 
+def record_to_dict(record: models.Record):
+    return {
+        "id": record.id,
+        "date": record.date,
+        "weight": record.weight,
+        "height": record.height,
+        "systolic": record.systolic,
+        "diastolic": record.diastolic,
+        "blood_sugar": record.blood_sugar,
+        "steps": record.steps,
+        "sleep_hours": record.sleep_hours,
+        "memo": record.memo,
+        "bmi": record.bmi,
+        "bmi_category": record.bmi_category,
+        "bp_category": record.bp_category,
+        "sugar_category": record.sugar_category,
+        "warnings": json.loads(record.warnings)
+    }
+
+
 @app.get("/")
 def read_root():
     return {"message": "마이 헬스 로그 API"}
 
 
 @app.post("/records")
-def create_record(record: RecordIn):
-    global next_id
+def create_record(record: RecordIn, db: Session = Depends(get_db)):
+    analysis = analyze_health(record)
 
-    new_record = {
-        "id": next_id,
+    new_record = models.Record(
         **record.model_dump(),
-        **analyze_health(record)
-    }
+        bmi=analysis["bmi"],
+        bmi_category=analysis["bmi_category"],
+        bp_category=analysis["bp_category"],
+        sugar_category=analysis["sugar_category"],
+        warnings=json.dumps(analysis["warnings"], ensure_ascii=False)
+    )
 
-    records.append(new_record)
-    save_records()
-    next_id += 1
+    db.add(new_record)
+    db.commit()
+    db.refresh(new_record)
 
-    return new_record
+    return record_to_dict(new_record)
 
 
 @app.get("/records")
-def get_records():
+def get_records(db: Session = Depends(get_db)):
+    records = db.query(models.Record).all()
+
     return {
         "count": len(records),
-        "records": records
+        "records": [record_to_dict(record) for record in records]
     }
 
 
 @app.get("/records/{record_id}")
-def get_record(record_id: int):
-    for record in records:
-        if record["id"] == record_id:
-            return record
+def get_record(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.Record).filter(models.Record.id == record_id).first()
 
-    raise HTTPException(
-        status_code=404,
-        detail="해당 기록을 찾을 수 없습니다."
-    )
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 기록을 찾을 수 없습니다."
+        )
+
+    return record_to_dict(record)
 
 
 @app.put("/records/{record_id}")
-def update_record(record_id: int, record: RecordIn):
-    for index, old_record in enumerate(records):
-        if old_record["id"] == record_id:
-            updated_record = {
-                "id": record_id,
-                **record.model_dump(),
-                **analyze_health(record)
-            }
+def update_record(record_id: int, record: RecordIn, db: Session = Depends(get_db)):
+    existing = db.query(models.Record).filter(models.Record.id == record_id).first()
 
-            records[index] = updated_record
-            save_records()
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 기록을 찾을 수 없습니다."
+        )
 
-            return updated_record
+    analysis = analyze_health(record)
 
-    raise HTTPException(
-        status_code=404,
-        detail="해당 기록을 찾을 수 없습니다."
-    )
+    for field, value in record.model_dump().items():
+        setattr(existing, field, value)
+
+    existing.bmi = analysis["bmi"]
+    existing.bmi_category = analysis["bmi_category"]
+    existing.bp_category = analysis["bp_category"]
+    existing.sugar_category = analysis["sugar_category"]
+    existing.warnings = json.dumps(analysis["warnings"], ensure_ascii=False)
+
+    db.commit()
+    db.refresh(existing)
+
+    return record_to_dict(existing)
 
 
 @app.delete("/records/{record_id}")
-def delete_record(record_id: int):
-    for index, record in enumerate(records):
-        if record["id"] == record_id:
-            records.pop(index)
-            save_records()
+def delete_record(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.Record).filter(models.Record.id == record_id).first()
 
-            return {"message": "기록이 삭제되었습니다."}
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 기록을 찾을 수 없습니다."
+        )
 
-    raise HTTPException(
-        status_code=404,
-        detail="해당 기록을 찾을 수 없습니다."
-    )
+    db.delete(record)
+    db.commit()
+
+    return {"message": "기록이 삭제되었습니다."}
 
 
 @app.get("/search")
 def search_records(
     start: str | None = None,
-    end: str | None = None
+    end: str | None = None,
+    db: Session = Depends(get_db)
 ):
     try:
-        start_date = Date.fromisoformat(start) if start else None
-        end_date = Date.fromisoformat(end) if end else None
+        if start:
+            Date.fromisoformat(start)
+        if end:
+            Date.fromisoformat(end)
     except ValueError:
         raise HTTPException(
             status_code=400,
             detail="날짜는 YYYY-MM-DD 형식으로 입력해주세요."
         )
 
-    result = []
+    query = db.query(models.Record)
 
-    for record in records:
-        record_date = Date.fromisoformat(record["date"])
+    if start:
+        query = query.filter(models.Record.date >= start)
 
-        if start_date and record_date < start_date:
-            continue
+    if end:
+        query = query.filter(models.Record.date <= end)
 
-        if end_date and record_date > end_date:
-            continue
-
-        result.append(record)
+    result = query.all()
 
     return {
         "count": len(result),
-        "records": result
+        "records": [record_to_dict(record) for record in result]
     }
 
 
 @app.get("/stats")
-def get_stats():
-    if not records:
+def get_stats(db: Session = Depends(get_db)):
+    count = db.query(models.Record).count()
+
+    if count == 0:
         return {
             "count": 0,
             "average_weight": 0,
@@ -220,24 +234,19 @@ def get_stats():
             "average_sleep_hours": 0
         }
 
-    count = len(records)
+    averages = db.query(
+        func.avg(models.Record.weight),
+        func.avg(models.Record.bmi),
+        func.avg(models.Record.steps),
+        func.avg(models.Record.sleep_hours)
+    ).first()
+
+    avg_weight, avg_bmi, avg_steps, avg_sleep_hours = averages
 
     return {
         "count": count,
-        "average_weight": round(
-            sum(record["weight"] for record in records) / count,
-            2
-        ),
-        "average_bmi": round(
-            sum(record["bmi"] for record in records) / count,
-            2
-        ),
-        "average_steps": round(
-            sum(record["steps"] for record in records) / count,
-            2
-        ),
-        "average_sleep_hours": round(
-            sum(record["sleep_hours"] for record in records) / count,
-            2
-        )
+        "average_weight": round(avg_weight, 2),
+        "average_bmi": round(avg_bmi, 2),
+        "average_steps": round(avg_steps, 2),
+        "average_sleep_hours": round(avg_sleep_hours, 2)
     }
