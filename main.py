@@ -2,10 +2,12 @@ import json
 from datetime import date as Date
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import auth
 import models
 from database import Base, engine, get_db
 
@@ -16,6 +18,21 @@ app = FastAPI(
 )
 
 Base.metadata.create_all(bind=engine)
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 
 class RecordIn(BaseModel):
@@ -102,12 +119,55 @@ def read_root():
     return {"message": "마이 헬스 로그 API"}
 
 
+@app.post("/signup", response_model=UserOut)
+def signup(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(models.User).filter(models.User.email == user.email).first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="이미 가입된 이메일입니다."
+        )
+
+    new_user = models.User(
+        email=user.email,
+        hashed_password=auth.hash_password(user.password)
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
+@app.post("/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+
+    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="이메일 또는 비밀번호가 올바르지 않습니다.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    access_token = auth.create_access_token(user.email)
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @app.post("/records")
-def create_record(record: RecordIn, db: Session = Depends(get_db)):
+def create_record(
+    record: RecordIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
     analysis = analyze_health(record)
 
     new_record = models.Record(
         **record.model_dump(),
+        user_id=current_user.id,
         bmi=analysis["bmi"],
         bmi_category=analysis["bmi_category"],
         bp_category=analysis["bp_category"],
@@ -123,8 +183,11 @@ def create_record(record: RecordIn, db: Session = Depends(get_db)):
 
 
 @app.get("/records")
-def get_records(db: Session = Depends(get_db)):
-    records = db.query(models.Record).all()
+def get_records(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    records = db.query(models.Record).filter(models.Record.user_id == current_user.id).all()
 
     return {
         "count": len(records),
@@ -133,8 +196,15 @@ def get_records(db: Session = Depends(get_db)):
 
 
 @app.get("/records/{record_id}")
-def get_record(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(models.Record).filter(models.Record.id == record_id).first()
+def get_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    record = db.query(models.Record).filter(
+        models.Record.id == record_id,
+        models.Record.user_id == current_user.id
+    ).first()
 
     if not record:
         raise HTTPException(
@@ -146,8 +216,16 @@ def get_record(record_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/records/{record_id}")
-def update_record(record_id: int, record: RecordIn, db: Session = Depends(get_db)):
-    existing = db.query(models.Record).filter(models.Record.id == record_id).first()
+def update_record(
+    record_id: int,
+    record: RecordIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    existing = db.query(models.Record).filter(
+        models.Record.id == record_id,
+        models.Record.user_id == current_user.id
+    ).first()
 
     if not existing:
         raise HTTPException(
@@ -173,8 +251,15 @@ def update_record(record_id: int, record: RecordIn, db: Session = Depends(get_db
 
 
 @app.delete("/records/{record_id}")
-def delete_record(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(models.Record).filter(models.Record.id == record_id).first()
+def delete_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    record = db.query(models.Record).filter(
+        models.Record.id == record_id,
+        models.Record.user_id == current_user.id
+    ).first()
 
     if not record:
         raise HTTPException(
@@ -192,7 +277,8 @@ def delete_record(record_id: int, db: Session = Depends(get_db)):
 def search_records(
     start: str | None = None,
     end: str | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     try:
         if start:
@@ -205,7 +291,7 @@ def search_records(
             detail="날짜는 YYYY-MM-DD 형식으로 입력해주세요."
         )
 
-    query = db.query(models.Record)
+    query = db.query(models.Record).filter(models.Record.user_id == current_user.id)
 
     if start:
         query = query.filter(models.Record.date >= start)
@@ -222,8 +308,12 @@ def search_records(
 
 
 @app.get("/stats")
-def get_stats(db: Session = Depends(get_db)):
-    count = db.query(models.Record).count()
+def get_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    base_query = db.query(models.Record).filter(models.Record.user_id == current_user.id)
+    count = base_query.count()
 
     if count == 0:
         return {
@@ -239,7 +329,7 @@ def get_stats(db: Session = Depends(get_db)):
         func.avg(models.Record.bmi),
         func.avg(models.Record.steps),
         func.avg(models.Record.sleep_hours)
-    ).first()
+    ).filter(models.Record.user_id == current_user.id).first()
 
     avg_weight, avg_bmi, avg_steps, avg_sleep_hours = averages
 
