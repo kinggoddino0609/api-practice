@@ -3,6 +3,7 @@ from datetime import date as Date
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -18,6 +19,8 @@ app = FastAPI(
 )
 
 Base.metadata.create_all(bind=engine)
+
+app.mount("/app", StaticFiles(directory="static", html=True), name="static")
 
 
 class UserCreate(BaseModel):
