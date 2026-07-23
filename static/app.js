@@ -1,25 +1,33 @@
 const TOKEN_KEY = "healthlog_token";
-const EMAIL_KEY = "healthlog_email";
 
-let authMode = "login";
+let currentStaff = null;
+let currentPatient = null;
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-function setSession(token, email) {
+function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EMAIL_KEY, email);
 }
 
 function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(EMAIL_KEY);
+  currentStaff = null;
+  currentPatient = null;
 }
 
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("is-active"));
   document.getElementById("view-" + name).classList.add("is-active");
+}
+
+function showSubview(name) {
+  document.querySelectorAll(".subview").forEach((s) => s.classList.remove("is-active"));
+  document.getElementById("sub-" + name).classList.add("is-active");
+  document.querySelectorAll(".nav-tab").forEach((t) => {
+    t.classList.toggle("is-active", t.dataset.view === name);
+  });
 }
 
 function showMsg(el, text, type) {
@@ -47,87 +55,40 @@ async function apiFetch(path, options = {}) {
   return res;
 }
 
-/* ---------------- 인증 화면 ---------------- */
+/* ---------------- 로그인 ---------------- */
 
 const authForm = document.getElementById("auth-form");
-const authTitle = document.getElementById("auth-title");
-const authSub = document.getElementById("auth-sub");
-const authSubmit = document.getElementById("auth-submit");
 const authMsg = document.getElementById("auth-msg");
-const authToggleText = document.getElementById("auth-toggle-text");
-const authToggleLink = document.getElementById("auth-toggle-link");
-const authEmail = document.getElementById("auth-email");
-const authPassword = document.getElementById("auth-password");
-
-function setAuthMode(mode) {
-  authMode = mode;
-  hideMsg(authMsg);
-
-  if (mode === "login") {
-    authTitle.textContent = "다시 오셨네요";
-    authSub.textContent = "오늘의 기록을 남기러 로그인하세요";
-    authSubmit.textContent = "로그인";
-    authToggleText.textContent = "계정이 없으신가요?";
-    authToggleLink.textContent = "회원가입";
-  } else {
-    authTitle.textContent = "계정 만들기";
-    authSub.textContent = "건강 기록을 시작해보세요";
-    authSubmit.textContent = "회원가입";
-    authToggleText.textContent = "이미 계정이 있으신가요?";
-    authToggleLink.textContent = "로그인";
-  }
-}
-
-authToggleLink.addEventListener("click", (e) => {
-  e.preventDefault();
-  setAuthMode(authMode === "login" ? "signup" : "login");
-});
+const authSubmit = document.getElementById("auth-submit");
 
 authForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg(authMsg);
 
-  const email = authEmail.value.trim();
-  const password = authPassword.value;
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
 
   authSubmit.disabled = true;
 
   try {
-    if (authMode === "signup") {
-      const res = await fetch("/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
+    const form = new URLSearchParams();
+    form.set("username", email);
+    form.set("password", password);
 
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.detail || "회원가입에 실패했어요.");
-      }
+    const res = await fetch("/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form
+    });
 
-      setAuthMode("login");
-      showMsg(authMsg, "가입 완료! 이제 로그인해주세요.", "success");
-      authPassword.value = "";
-    } else {
-      const form = new URLSearchParams();
-      form.set("username", email);
-      form.set("password", password);
-
-      const res = await fetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: form
-      });
-
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.detail || "로그인에 실패했어요.");
-      }
-
-      const data = await res.json();
-      setSession(data.access_token, email);
-      await enterDashboard();
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.detail || "로그인에 실패했어요.");
     }
+
+    const data = await res.json();
+    setToken(data.access_token);
+    await enterApp();
   } catch (err) {
     showMsg(authMsg, err.message, "error");
   } finally {
@@ -135,23 +96,154 @@ authForm.addEventListener("submit", async (e) => {
   }
 });
 
-/* ---------------- 대시보드 ---------------- */
-
-const currentEmailEl = document.getElementById("current-email");
-const logoutBtn = document.getElementById("logout-btn");
-const statRow = document.getElementById("stat-row");
-const recordsTbody = document.getElementById("records-tbody");
-const trendDelta = document.getElementById("trend-delta");
-const chartWrap = document.getElementById("chart-wrap");
-const chartWrapBp = document.getElementById("chart-wrap-bp");
-const recordForm = document.getElementById("record-form");
-const recordMsg = document.getElementById("record-msg");
-const todayLabel = document.getElementById("today-label");
-
-logoutBtn.addEventListener("click", () => {
+document.getElementById("logout-btn").addEventListener("click", () => {
   clearSession();
   showScreen("auth");
-  setAuthMode("login");
+});
+
+/* ---------------- 앱 진입 / 내비게이션 ---------------- */
+
+const navStaffTab = document.getElementById("nav-staff-tab");
+
+document.getElementById("nav-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".nav-tab");
+  if (!btn) return;
+  const view = btn.dataset.view;
+  showSubview(view);
+  if (view === "patients") loadAllPatients();
+  if (view === "staff") loadStaffList();
+});
+
+async function enterApp() {
+  const res = await apiFetch("/me");
+  currentStaff = await res.json();
+
+  document.getElementById("current-name").textContent = currentStaff.name;
+  document.getElementById("current-role").textContent =
+    currentStaff.role === "admin" ? "관리자" : "직원";
+
+  navStaffTab.hidden = currentStaff.role !== "admin";
+
+  showScreen("app");
+  showSubview("patients");
+  await loadAllPatients();
+}
+
+/* ---------------- 환자 검색 / 등록 / 목록 ---------------- */
+
+const patientSearchForm = document.getElementById("patient-search-form");
+const patientSearchMsg = document.getElementById("patient-search-msg");
+const patientRegisterPanel = document.getElementById("patient-register-panel");
+const patientRegisterForm = document.getElementById("patient-register-form");
+const patientRegisterMsg = document.getElementById("patient-register-msg");
+const patientsTbody = document.getElementById("patients-tbody");
+
+function renderPatientsTable(patients) {
+  if (patients.length === 0) {
+    patientsTbody.innerHTML = '<tr class="empty-row"><td colspan="5">환자가 없어요.</td></tr>';
+    return;
+  }
+
+  patientsTbody.innerHTML = patients
+    .map(
+      (p) => `
+        <tr class="row-click" data-id="${p.id}">
+          <td>${p.name}</td>
+          <td class="mono">${p.birth_date}</td>
+          <td>${p.gender === "M" ? "남" : "여"}</td>
+          <td class="mono">${p.phone}</td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-open="${p.id}" title="차트 열기" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </td>
+        </tr>
+      `
+    )
+    .join("");
+
+  patientsTbody.querySelectorAll("[data-id]").forEach((row) => {
+    row.addEventListener("click", () => openPatientChart(row.dataset.id));
+  });
+}
+
+async function loadAllPatients() {
+  const res = await apiFetch("/patients");
+  const data = await res.json();
+  renderPatientsTable(data.patients);
+}
+
+patientSearchForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg(patientSearchMsg);
+  patientRegisterPanel.hidden = true;
+
+  const name = document.getElementById("ps-name").value.trim();
+  const phone4 = document.getElementById("ps-phone4").value.trim();
+
+  const params = new URLSearchParams({ name, phone_last4: phone4 });
+  const res = await apiFetch("/patients/search?" + params.toString());
+  const data = await res.json();
+
+  if (data.count === 0) {
+    showMsg(patientSearchMsg, "일치하는 환자가 없어요. 아래에서 신규 등록해주세요.", "error");
+    document.getElementById("pr-name").value = name;
+    patientRegisterPanel.hidden = false;
+    renderPatientsTable([]);
+  } else {
+    renderPatientsTable(data.patients);
+  }
+});
+
+patientRegisterForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg(patientRegisterMsg);
+
+  const payload = {
+    name: document.getElementById("pr-name").value.trim(),
+    phone: document.getElementById("pr-phone").value.trim(),
+    birth_date: document.getElementById("pr-birth").value,
+    gender: document.getElementById("pr-gender").value
+  };
+
+  try {
+    const res = await apiFetch("/patients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.detail ? JSON.stringify(body.detail) : "환자 등록에 실패했어요.");
+    }
+
+    const patient = await res.json();
+    patientRegisterPanel.hidden = true;
+    patientRegisterForm.reset();
+    await openPatientChart(patient.id);
+  } catch (err) {
+    showMsg(patientRegisterMsg, err.message, "error");
+  }
+});
+
+/* ---------------- 환자 차트 ---------------- */
+
+const chartBackBtn = document.getElementById("chart-back-btn");
+const patientInfoBar = document.getElementById("patient-info-bar");
+const chartStatRow = document.getElementById("chart-stat-row");
+const chartRecordsTbody = document.getElementById("chart-records-tbody");
+const chartTrendDelta = document.getElementById("chart-trend-delta");
+const chartWrapWeight = document.getElementById("chart-wrap-weight");
+const chartWrapBp = document.getElementById("chart-wrap-bp");
+const chartRecordForm = document.getElementById("chart-record-form");
+const chartRecordMsg = document.getElementById("chart-record-msg");
+const chartTodayLabel = document.getElementById("chart-today-label");
+
+chartBackBtn.addEventListener("click", () => {
+  currentPatient = null;
+  showSubview("patients");
+  loadAllPatients();
 });
 
 function severity(kind, category) {
@@ -184,11 +276,11 @@ function worstOf(record) {
   return items[0];
 }
 
-function renderStatRow(latest) {
+function renderChartStatRow(latest) {
   if (!latest) {
-    statRow.innerHTML =
+    chartStatRow.innerHTML =
       '<div class="panel" style="grid-column: 1 / -1; padding: 20px; color: var(--ink-600);">' +
-      "아직 기록이 없어요. 오른쪽 폼에서 첫 기록을 남겨보세요." +
+      "아직 진료 기록이 없어요. 왼쪽 폼에서 첫 기록을 남겨보세요." +
       "</div>";
     return;
   }
@@ -197,7 +289,7 @@ function renderStatRow(latest) {
   const bpSev = severity("bp", latest.bp_category);
   const sugarSev = severity("sugar", latest.sugar_category);
 
-  statRow.innerHTML = `
+  chartStatRow.innerHTML = `
     <div class="stat-card">
       <div class="label">체중</div>
       <div class="value mono">${latest.weight.toFixed(1)}<span class="unit">kg</span></div>
@@ -221,16 +313,16 @@ function renderStatRow(latest) {
   `;
 }
 
-function renderTable(records) {
+function renderChartRecordsTable(records) {
   if (records.length === 0) {
-    recordsTbody.innerHTML =
+    chartRecordsTbody.innerHTML =
       '<tr class="empty-row"><td colspan="7">등록된 기록이 없어요.</td></tr>';
     return;
   }
 
   const sorted = [...records].sort((a, b) => (a.date < b.date ? 1 : -1));
 
-  recordsTbody.innerHTML = sorted
+  chartRecordsTbody.innerHTML = sorted
     .map((r) => {
       const worst = worstOf(r);
       const hasWarnings = r.warnings && r.warnings.length > 0;
@@ -258,7 +350,7 @@ function renderTable(records) {
     })
     .join("");
 
-  recordsTbody.querySelectorAll("[data-delete]").forEach((btn) => {
+  chartRecordsTbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", () => deleteRecord(btn.dataset.delete));
   });
 }
@@ -350,30 +442,30 @@ function drawWeightTrend(records) {
   const recent = [...records].sort((a, b) => (a.date > b.date ? 1 : -1)).slice(-8);
 
   if (recent.length === 0) {
-    chartWrap.innerHTML = '<div class="chart-empty">기록이 쌓이면 체중 추이를 보여드릴게요.</div>';
-    trendDelta.textContent = "";
+    chartWrapWeight.innerHTML = '<div class="chart-empty">기록이 쌓이면 체중 추이를 보여드릴게요.</div>';
+    chartTrendDelta.textContent = "";
     return;
   }
 
-  if (!document.getElementById("trend-weight")) {
-    chartWrap.innerHTML = '<canvas id="trend-weight" height="90"></canvas>';
+  if (!document.getElementById("chart-trend-weight")) {
+    chartWrapWeight.innerHTML = '<canvas id="chart-trend-weight" height="90"></canvas>';
   }
 
   const data = recent.map((r) => r.weight);
 
   if (data.length >= 2) {
     const diff = data[data.length - 1] - data[0];
-    trendDelta.textContent =
+    chartTrendDelta.textContent =
       (diff <= 0 ? "▾ " : "▴ ") + Math.abs(diff).toFixed(1) + "kg (구간 내 변화)";
-    trendDelta.className = "delta mono " + (diff <= 0 ? "down" : "up");
+    chartTrendDelta.className = "delta mono " + (diff <= 0 ? "down" : "up");
   } else {
-    trendDelta.textContent = "";
+    chartTrendDelta.textContent = "";
   }
 
   const styles = getComputedStyle(document.documentElement);
   const accent = styles.getPropertyValue("--accent").trim();
 
-  renderLineChart(document.getElementById("trend-weight"), [
+  renderLineChart(document.getElementById("chart-trend-weight"), [
     { data, color: accent, fill: true }
   ]);
 }
@@ -386,55 +478,74 @@ function drawBpTrend(records) {
     return;
   }
 
-  if (!document.getElementById("trend-bp")) {
-    chartWrapBp.innerHTML = '<canvas id="trend-bp" height="90"></canvas>';
+  if (!document.getElementById("chart-trend-bp")) {
+    chartWrapBp.innerHTML = '<canvas id="chart-trend-bp" height="90"></canvas>';
   }
 
   const styles = getComputedStyle(document.documentElement);
   const accent = styles.getPropertyValue("--accent").trim();
   const muted = styles.getPropertyValue("--ink-400").trim();
 
-  renderLineChart(document.getElementById("trend-bp"), [
+  renderLineChart(document.getElementById("chart-trend-bp"), [
     { data: recent.map((r) => r.systolic), color: accent },
     { data: recent.map((r) => r.diastolic), color: muted, dashed: true }
   ]);
 }
 
-async function loadDashboard() {
-  const res = await apiFetch("/records");
+async function loadPatientChart() {
+  const res = await apiFetch(`/patients/${currentPatient.id}/records`);
   const data = await res.json();
   const records = data.records;
 
   const latest = [...records].sort((a, b) => (a.date > b.date ? -1 : 1))[0];
-  renderStatRow(latest);
-  renderTable(records);
+  renderChartStatRow(latest);
+  renderChartRecordsTable(records);
   drawWeightTrend(records);
   drawBpTrend(records);
 }
 
-async function deleteRecord(id) {
-  await apiFetch("/records/" + id, { method: "DELETE" });
-  await loadDashboard();
+async function openPatientChart(patientId) {
+  const res = await apiFetch(`/patients/${patientId}`);
+  currentPatient = await res.json();
+
+  patientInfoBar.innerHTML = `
+    <div><strong>${currentPatient.name}</strong></div>
+    <div><span>생년월일</span> ${currentPatient.birth_date}</div>
+    <div><span>성별</span> ${currentPatient.gender === "M" ? "남" : "여"}</div>
+    <div><span>전화번호</span> ${currentPatient.phone}</div>
+  `;
+
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById("cf-date").value = today;
+  chartTodayLabel.textContent = "오늘의 요약 · " + today;
+
+  showSubview("chart");
+  await loadPatientChart();
 }
 
-recordForm.addEventListener("submit", async (e) => {
+async function deleteRecord(id) {
+  await apiFetch(`/patients/${currentPatient.id}/records/${id}`, { method: "DELETE" });
+  await loadPatientChart();
+}
+
+chartRecordForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  hideMsg(recordMsg);
+  hideMsg(chartRecordMsg);
 
   const payload = {
-    date: document.getElementById("rf-date").value,
-    weight: parseFloat(document.getElementById("rf-weight").value),
-    height: parseFloat(document.getElementById("rf-height").value),
-    systolic: parseInt(document.getElementById("rf-systolic").value, 10),
-    diastolic: parseInt(document.getElementById("rf-diastolic").value, 10),
-    blood_sugar: parseInt(document.getElementById("rf-sugar").value, 10),
-    steps: parseInt(document.getElementById("rf-steps").value || "0", 10),
-    sleep_hours: parseFloat(document.getElementById("rf-sleep").value || "0"),
-    memo: document.getElementById("rf-memo").value
+    date: document.getElementById("cf-date").value,
+    weight: parseFloat(document.getElementById("cf-weight").value),
+    height: parseFloat(document.getElementById("cf-height").value),
+    systolic: parseInt(document.getElementById("cf-systolic").value, 10),
+    diastolic: parseInt(document.getElementById("cf-diastolic").value, 10),
+    blood_sugar: parseInt(document.getElementById("cf-sugar").value, 10),
+    steps: parseInt(document.getElementById("cf-steps").value || "0", 10),
+    sleep_hours: parseFloat(document.getElementById("cf-sleep").value || "0"),
+    memo: document.getElementById("cf-memo").value
   };
 
   try {
-    const res = await apiFetch("/records", {
+    const res = await apiFetch(`/patients/${currentPatient.id}/records`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -445,33 +556,95 @@ recordForm.addEventListener("submit", async (e) => {
       throw new Error(body.detail ? JSON.stringify(body.detail) : "기록 저장에 실패했어요.");
     }
 
-    document.getElementById("rf-memo").value = "";
-    await loadDashboard();
-    showMsg(recordMsg, "기록이 저장됐어요.", "success");
+    document.getElementById("cf-memo").value = "";
+    await loadPatientChart();
+    showMsg(chartRecordMsg, "기록이 저장됐어요.", "success");
   } catch (err) {
-    showMsg(recordMsg, err.message, "error");
+    showMsg(chartRecordMsg, err.message, "error");
   }
 });
 
-async function enterDashboard() {
-  const email = localStorage.getItem(EMAIL_KEY) || "";
-  currentEmailEl.textContent = email;
+/* ---------------- 직원 관리 (admin) ---------------- */
 
-  const today = new Date().toISOString().slice(0, 10);
-  document.getElementById("rf-date").value = today;
-  todayLabel.textContent = "오늘의 요약 · " + today;
+const staffCreateForm = document.getElementById("staff-create-form");
+const staffCreateMsg = document.getElementById("staff-create-msg");
+const staffTbody = document.getElementById("staff-tbody");
 
-  showScreen("dashboard");
-  await loadDashboard();
+function renderStaffTable(staffList) {
+  if (staffList.length === 0) {
+    staffTbody.innerHTML = '<tr class="empty-row"><td colspan="4">등록된 직원이 없어요.</td></tr>';
+    return;
+  }
+
+  staffTbody.innerHTML = staffList
+    .map(
+      (s) => `
+        <tr data-id="${s.id}">
+          <td>${s.name}</td>
+          <td class="mono">${s.email}</td>
+          <td><span class="chip ${s.role === "admin" ? "warn" : "good"}">${s.role === "admin" ? "관리자" : "일반 직원"}</span></td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-delete="${s.id}" title="삭제" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </td>
+        </tr>
+      `
+    )
+    .join("");
+
+  staffTbody.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => deleteStaff(btn.dataset.delete));
+  });
 }
+
+async function loadStaffList() {
+  const res = await apiFetch("/staff");
+  const data = await res.json();
+  renderStaffTable(data.staff);
+}
+
+async function deleteStaff(id) {
+  await apiFetch(`/staff/${id}`, { method: "DELETE" });
+  await loadStaffList();
+}
+
+staffCreateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg(staffCreateMsg);
+
+  const payload = {
+    name: document.getElementById("sf-name").value.trim(),
+    role: document.getElementById("sf-role").value,
+    email: document.getElementById("sf-email").value.trim(),
+    password: document.getElementById("sf-password").value
+  };
+
+  try {
+    const res = await apiFetch("/staff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.detail ? JSON.stringify(body.detail) : "계정 발급에 실패했어요.");
+    }
+
+    staffCreateForm.reset();
+    await loadStaffList();
+    showMsg(staffCreateMsg, "계정이 발급됐어요.", "success");
+  } catch (err) {
+    showMsg(staffCreateMsg, err.message, "error");
+  }
+});
 
 /* ---------------- 시작 ---------------- */
 
 if (getToken()) {
-  enterDashboard().catch(() => {
+  enterApp().catch(() => {
+    clearSession();
     showScreen("auth");
-    setAuthMode("login");
   });
-} else {
-  setAuthMode("login");
 }

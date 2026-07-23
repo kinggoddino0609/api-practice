@@ -37,7 +37,7 @@ def create_access_token(email: str) -> str:
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
-) -> models.User:
+) -> models.Staff:
     credentials_exception = HTTPException(
         status_code=401,
         detail="인증 정보가 유효하지 않습니다.",
@@ -53,9 +53,21 @@ def get_current_user(
     except jwt.PyJWTError:
         raise credentials_exception
 
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = db.query(models.Staff).filter(models.Staff.email == email).first()
 
     if user is None:
         raise credentials_exception
 
     return user
+
+
+def get_current_admin(
+    current_user: models.Staff = Depends(get_current_user)
+) -> models.Staff:
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="관리자만 접근할 수 있습니다."
+        )
+
+    return current_user

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>마이 헬스 로그</title>
+<title>마이 헬스 로그 · 병원 차트</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- ============ LOGIN / SIGNUP SCREEN ============ -->
+<!-- ============ LOGIN SCREEN ============ -->
 <section class="screen is-active" id="view-auth">
   <div class="login-wrap">
     <div>
@@ -19,8 +19,8 @@
         <span>마이 헬스 로그</span>
       </div>
       <form class="login-card" id="auth-form" novalidate>
-        <h1 class="display" id="auth-title">다시 오셨네요</h1>
-        <p class="sub" id="auth-sub">오늘의 기록을 남기러 로그인하세요</p>
+        <h1 class="display">직원 로그인</h1>
+        <p class="sub">발급받은 계정으로 로그인하세요</p>
 
         <div class="form-msg" id="auth-msg"></div>
 
@@ -33,17 +33,14 @@
           <input id="auth-password" type="password" required minlength="8" autocomplete="current-password" />
         </div>
         <button class="btn-primary" type="submit" id="auth-submit">로그인</button>
-        <p class="login-foot">
-          <span id="auth-toggle-text">계정이 없으신가요?</span>
-          <a href="#" id="auth-toggle-link">회원가입</a>
-        </p>
+        <p class="login-foot">계정이 없다면 관리자에게 발급을 요청하세요</p>
       </form>
     </div>
   </div>
 </section>
 
-<!-- ============ DASHBOARD SCREEN ============ -->
-<section class="screen" id="view-dashboard">
+<!-- ============ APP SHELL (로그인 후) ============ -->
+<section class="screen" id="view-app">
   <div class="shell">
     <div class="topbar">
       <div class="brand-mark">
@@ -52,115 +49,238 @@
         </svg>
         <strong>마이 헬스 로그</strong>
       </div>
+      <nav class="nav-tabs" id="nav-tabs">
+        <button type="button" class="nav-tab is-active" data-view="patients">환자 관리</button>
+        <button type="button" class="nav-tab" data-view="staff" id="nav-staff-tab" hidden>직원 관리</button>
+      </nav>
       <div class="user-chip">
-        <span id="current-email"></span>
+        <span id="current-name"></span>
+        <span class="role-badge" id="current-role"></span>
         <button type="button" id="logout-btn">로그아웃</button>
       </div>
     </div>
 
-    <p class="eyebrow" id="today-label">오늘의 요약</p>
-    <div class="stat-row" id="stat-row">
-      <!-- JS로 채워짐 -->
-    </div>
+    <!-- ---- 서브뷰: 환자 검색/목록 ---- -->
+    <div class="subview is-active" id="sub-patients">
+      <div class="panel">
+        <div class="panel-head"><h2>환자 조회</h2></div>
+        <div class="form-msg" id="patient-search-msg"></div>
+        <form class="search-bar" id="patient-search-form">
+          <div class="field">
+            <label for="ps-name">이름</label>
+            <input id="ps-name" type="text" required />
+          </div>
+          <div class="field">
+            <label for="ps-phone4">전화번호 뒷 4자리</label>
+            <input id="ps-phone4" type="text" inputmode="numeric" maxlength="4" required />
+          </div>
+          <button class="btn-primary btn-compact" type="submit">검색</button>
+        </form>
+      </div>
 
-    <div class="grid-2">
-      <div class="panel form-panel">
-        <div class="form-panel-head">
-          <h2>기록 추가</h2>
-          <button class="btn-primary btn-compact" type="submit" form="record-form">기록 저장</button>
-        </div>
-        <div class="form-msg" id="record-msg"></div>
-        <form id="record-form">
-          <div class="form-grid">
-            <div class="field full">
-              <label for="rf-date">날짜</label>
-              <input id="rf-date" type="date" required />
-            </div>
-            <div class="field">
-              <label for="rf-weight">체중 (kg)</label>
-              <input id="rf-weight" type="number" step="0.1" min="1" required />
-            </div>
-            <div class="field">
-              <label for="rf-height">키 (cm)</label>
-              <input id="rf-height" type="number" step="0.1" min="1" required />
-            </div>
-            <div class="field-row-3">
-              <div class="field">
-                <label for="rf-systolic">수축기 혈압</label>
-                <input id="rf-systolic" type="number" min="1" required />
-              </div>
-              <div class="field">
-                <label for="rf-diastolic">이완기 혈압</label>
-                <input id="rf-diastolic" type="number" min="1" required />
-              </div>
-              <div class="field">
-                <label for="rf-sugar">공복혈당</label>
-                <input id="rf-sugar" type="number" min="0" required />
-              </div>
-            </div>
-            <div class="field-row-2">
-              <div class="field">
-                <label for="rf-steps">걸음 수</label>
-                <input id="rf-steps" type="number" min="0" value="0" />
-              </div>
-              <div class="field">
-                <label for="rf-sleep">수면 시간</label>
-                <input id="rf-sleep" type="number" step="0.1" min="0" value="0" />
-              </div>
-            </div>
-            <div class="field full">
-              <label for="rf-memo">메모</label>
-              <input id="rf-memo" type="text" />
-            </div>
+      <div class="panel" id="patient-register-panel" hidden>
+        <div class="panel-head"><h2>신규 환자 등록</h2></div>
+        <div class="form-msg" id="patient-register-msg"></div>
+        <form class="form-grid" id="patient-register-form" style="padding: 4px 20px 20px;">
+          <div class="field">
+            <label for="pr-name">이름</label>
+            <input id="pr-name" type="text" required />
+          </div>
+          <div class="field">
+            <label for="pr-phone">전화번호</label>
+            <input id="pr-phone" type="text" placeholder="010-0000-0000" required />
+          </div>
+          <div class="field">
+            <label for="pr-birth">생년월일</label>
+            <input id="pr-birth" type="date" required />
+          </div>
+          <div class="field">
+            <label for="pr-gender">성별</label>
+            <select id="pr-gender" required>
+              <option value="F">여</option>
+              <option value="M">남</option>
+            </select>
+          </div>
+          <div class="field full">
+            <button class="btn-primary btn-compact" type="submit">등록하고 차트 열기</button>
           </div>
         </form>
       </div>
 
       <div class="panel">
-        <div class="panel-head" style="padding-bottom: 14px;">
-          <h2>최근 기록</h2>
-        </div>
+        <div class="panel-head"><h2>전체 환자 목록</h2></div>
         <div class="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>날짜</th>
-                <th class="num">체중</th>
-                <th class="num">BMI</th>
-                <th class="num">혈압</th>
-                <th class="num">혈당</th>
-                <th>상태</th>
+                <th>이름</th>
+                <th>생년월일</th>
+                <th>성별</th>
+                <th>전화번호</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="records-tbody">
-              <!-- JS로 채워짐 -->
-            </tbody>
+            <tbody id="patients-tbody"></tbody>
           </table>
         </div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>체중 추이</h2>
-        <span class="delta mono" id="trend-delta"></span>
+    <!-- ---- 서브뷰: 환자 차트 ---- -->
+    <div class="subview" id="sub-chart">
+      <button type="button" class="back-link" id="chart-back-btn">← 환자 목록으로</button>
+
+      <div class="patient-info-bar" id="patient-info-bar"></div>
+
+      <p class="eyebrow" id="chart-today-label">오늘의 요약</p>
+      <div class="stat-row" id="chart-stat-row"></div>
+
+      <div class="grid-2">
+        <div class="panel form-panel">
+          <div class="form-panel-head">
+            <h2>진료 기록 추가</h2>
+            <button class="btn-primary btn-compact" type="submit" form="chart-record-form">저장</button>
+          </div>
+          <div class="form-msg" id="chart-record-msg"></div>
+          <form id="chart-record-form">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="cf-date">날짜</label>
+                <input id="cf-date" type="date" required />
+              </div>
+              <div class="field">
+                <label for="cf-weight">체중 (kg)</label>
+                <input id="cf-weight" type="number" step="0.1" min="1" required />
+              </div>
+              <div class="field">
+                <label for="cf-height">키 (cm)</label>
+                <input id="cf-height" type="number" step="0.1" min="1" required />
+              </div>
+              <div class="field-row-3">
+                <div class="field">
+                  <label for="cf-systolic">수축기 혈압</label>
+                  <input id="cf-systolic" type="number" min="1" required />
+                </div>
+                <div class="field">
+                  <label for="cf-diastolic">이완기 혈압</label>
+                  <input id="cf-diastolic" type="number" min="1" required />
+                </div>
+                <div class="field">
+                  <label for="cf-sugar">공복혈당</label>
+                  <input id="cf-sugar" type="number" min="0" required />
+                </div>
+              </div>
+              <div class="field-row-2">
+                <div class="field">
+                  <label for="cf-steps">걸음 수</label>
+                  <input id="cf-steps" type="number" min="0" value="0" />
+                </div>
+                <div class="field">
+                  <label for="cf-sleep">수면 시간</label>
+                  <input id="cf-sleep" type="number" step="0.1" min="0" value="0" />
+                </div>
+              </div>
+              <div class="field full">
+                <label for="cf-memo">소견 / 메모</label>
+                <input id="cf-memo" type="text" />
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head" style="padding-bottom: 14px;">
+            <h2>진료 기록</h2>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th class="num">체중</th>
+                  <th class="num">BMI</th>
+                  <th class="num">혈압</th>
+                  <th class="num">혈당</th>
+                  <th>상태</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="chart-records-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div class="chart-wrap" id="chart-wrap">
-        <canvas id="trend-weight" height="90"></canvas>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>체중 추이</h2>
+          <span class="delta mono" id="chart-trend-delta"></span>
+        </div>
+        <div class="chart-wrap" id="chart-wrap-weight">
+          <canvas id="chart-trend-weight" height="90"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>혈압 추이</h2>
+          <div class="chart-legend">
+            <span class="legend-item"><i style="background: var(--accent);"></i>수축기</span>
+            <span class="legend-item"><i style="background: var(--ink-400);"></i>이완기</span>
+          </div>
+        </div>
+        <div class="chart-wrap" id="chart-wrap-bp">
+          <canvas id="chart-trend-bp" height="90"></canvas>
+        </div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>혈압 추이</h2>
-        <div class="chart-legend">
-          <span class="legend-item"><i style="background: var(--accent);"></i>수축기</span>
-          <span class="legend-item"><i style="background: var(--ink-400);"></i>이완기</span>
-        </div>
+    <!-- ---- 서브뷰: 직원 관리 (admin 전용) ---- -->
+    <div class="subview" id="sub-staff">
+      <div class="panel form-panel">
+        <div class="panel-head"><h2>직원 계정 발급</h2></div>
+        <div class="form-msg" id="staff-create-msg"></div>
+        <form class="form-grid" id="staff-create-form" style="padding: 4px 20px 20px;">
+          <div class="field">
+            <label for="sf-name">이름</label>
+            <input id="sf-name" type="text" required />
+          </div>
+          <div class="field">
+            <label for="sf-role">역할</label>
+            <select id="sf-role">
+              <option value="staff">일반 직원</option>
+              <option value="admin">관리자</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sf-email">이메일</label>
+            <input id="sf-email" type="email" required />
+          </div>
+          <div class="field">
+            <label for="sf-password">초기 비밀번호</label>
+            <input id="sf-password" type="password" minlength="8" required />
+          </div>
+          <div class="field full">
+            <button class="btn-primary btn-compact" type="submit">계정 발급</button>
+          </div>
+        </form>
       </div>
-      <div class="chart-wrap" id="chart-wrap-bp">
-        <canvas id="trend-bp" height="90"></canvas>
+
+      <div class="panel">
+        <div class="panel-head"><h2>직원 목록</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>이름</th>
+                <th>이메일</th>
+                <th>역할</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="staff-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
