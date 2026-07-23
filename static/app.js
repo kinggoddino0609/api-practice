@@ -137,6 +137,13 @@ const patientRegisterPanel = document.getElementById("patient-register-panel");
 const patientRegisterForm = document.getElementById("patient-register-form");
 const patientRegisterMsg = document.getElementById("patient-register-msg");
 const patientsTbody = document.getElementById("patients-tbody");
+const patientsPagination = document.getElementById("patients-pagination");
+const patientsPrevBtn = document.getElementById("patients-prev-btn");
+const patientsNextBtn = document.getElementById("patients-next-btn");
+const patientsPageLabel = document.getElementById("patients-page-label");
+
+const PAGE_SIZE = 10;
+let patientsPage = 1;
 
 function renderPatientsTable(patients) {
   if (patients.length === 0) {
@@ -167,11 +174,27 @@ function renderPatientsTable(patients) {
   });
 }
 
-async function loadAllPatients() {
-  const res = await apiFetch("/patients");
+async function loadAllPatients(page = 1) {
+  patientsPage = page;
+  const params = new URLSearchParams({ page, page_size: PAGE_SIZE });
+  const res = await apiFetch("/patients?" + params.toString());
   const data = await res.json();
   renderPatientsTable(data.patients);
+
+  const totalPages = Math.max(1, Math.ceil(data.count / data.page_size));
+  patientsPageLabel.textContent = `${data.page} / ${totalPages} 페이지 (총 ${data.count}명)`;
+  patientsPrevBtn.disabled = data.page <= 1;
+  patientsNextBtn.disabled = data.page >= totalPages;
+  patientsPagination.hidden = false;
 }
+
+patientsPrevBtn.addEventListener("click", () => {
+  if (patientsPage > 1) loadAllPatients(patientsPage - 1);
+});
+
+patientsNextBtn.addEventListener("click", () => {
+  loadAllPatients(patientsPage + 1);
+});
 
 patientSearchForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -190,8 +213,10 @@ patientSearchForm.addEventListener("submit", async (e) => {
     document.getElementById("pr-name").value = name;
     patientRegisterPanel.hidden = false;
     renderPatientsTable([]);
+    patientsPagination.hidden = true;
   } else {
     renderPatientsTable(data.patients);
+    patientsPagination.hidden = true;
   }
 });
 

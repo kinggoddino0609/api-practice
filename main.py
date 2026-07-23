@@ -3,7 +3,7 @@ import os
 from datetime import date as Date
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
@@ -318,13 +318,24 @@ def search_patients(
 
 @app.get("/patients")
 def list_patients(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: models.Staff = Depends(auth.get_current_user)
 ):
-    patients = db.query(models.Patient).all()
+    total = db.query(models.Patient).count()
+    patients = (
+        db.query(models.Patient)
+        .order_by(models.Patient.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
     return {
-        "count": len(patients),
+        "count": total,
+        "page": page,
+        "page_size": page_size,
         "patients": [patient_to_dict(p) for p in patients]
     }
 
