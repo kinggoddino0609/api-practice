@@ -18,7 +18,22 @@
   --crit-soft: #f6e4e2;
   --radius: 6px;
   --shadow: none;
+  --page-tint: var(--paper);
+  --role-admin-bg: #fdf6dc;
+  --role-admin-ink: #7a5f10;
+  --role-doctor-bg: #e1eefb;
+  --role-doctor-ink: #1d5185;
+  --role-nurse-bg: #fbe3ec;
+  --role-nurse-ink: #99315c;
+  --btn-bg: #55595f;
+  --btn-bg-hover: #3d4045;
+  --nav-active-bg: #dfe1e3;
 }
+
+/* 역할별 페이지 배경 틴트 (아주 연하게) */
+:root[data-role="admin"] { --page-tint: #fdfbf1; }
+:root[data-role="doctor"] { --page-tint: #f1f6fb; }
+:root[data-role="nurse"] { --page-tint: #fdf1f4; }
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -39,7 +54,17 @@
     --warn-soft: #3a2e17;
     --crit: #e0837c;
     --crit-soft: #3a201d;
+    --role-admin-bg: #332c14;
+    --role-admin-ink: #e8cf7a;
+    --role-doctor-bg: #16283a;
+    --role-doctor-ink: #a9cdec;
+    --role-nurse-bg: #391f2a;
+    --role-nurse-ink: #eaa8c4;
+    --nav-active-bg: #343b41;
   }
+  :root[data-role="admin"] { --page-tint: #1c1a11; }
+  :root[data-role="doctor"] { --page-tint: #121a20; }
+  :root[data-role="nurse"] { --page-tint: #1f151a; }
 }
 :root[data-theme="dark"] {
   --paper: #141815;
@@ -59,7 +84,17 @@
   --warn-soft: #3a2e17;
   --crit: #e0837c;
   --crit-soft: #3a201d;
+  --role-admin-bg: #332c14;
+  --role-admin-ink: #e8cf7a;
+  --role-doctor-bg: #16283a;
+  --role-doctor-ink: #a9cdec;
+  --role-nurse-bg: #391f2a;
+  --role-nurse-ink: #eaa8c4;
+  --nav-active-bg: #343b41;
 }
+:root[data-theme="dark"][data-role="admin"] { --page-tint: #1c1a11; }
+:root[data-theme="dark"][data-role="doctor"] { --page-tint: #121a20; }
+:root[data-theme="dark"][data-role="nurse"] { --page-tint: #1f151a; }
 :root[data-theme="light"] {
   --paper: #ffffff;
   --surface: #ffffff;
@@ -78,13 +113,22 @@
   --warn-soft: #f5ecda;
   --crit: #a3352e;
   --crit-soft: #f6e4e2;
+  --role-admin-bg: #fdf6dc;
+  --role-admin-ink: #7a5f10;
+  --role-doctor-bg: #e1eefb;
+  --role-doctor-ink: #1d5185;
+  --role-nurse-bg: #fbe3ec;
+  --role-nurse-ink: #99315c;
 }
+:root[data-theme="light"][data-role="admin"] { --page-tint: #fdfbf1; }
+:root[data-theme="light"][data-role="doctor"] { --page-tint: #f1f6fb; }
+:root[data-theme="light"][data-role="nurse"] { --page-tint: #fdf1f4; }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--page-tint);
   color: var(--ink-900);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -119,6 +163,13 @@ body {
   margin-bottom: 22px;
 }
 .brand-mark svg { flex-shrink: 0; }
+.brand-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
 .brand-mark span {
   font-size: 13px;
   letter-spacing: 0.08em;
@@ -170,6 +221,13 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--surface-2) inset;
+  -webkit-text-fill-color: var(--ink-900);
+  transition: background-color 9999s ease-in-out 0s;
+}
 
 .btn-primary {
   width: 100%;
@@ -179,12 +237,12 @@ body {
   padding: 11px;
   border: none;
   border-radius: 5px;
-  background: var(--accent);
+  background: var(--btn-bg);
   color: #fff;
   cursor: pointer;
   margin-top: 6px;
 }
-.btn-primary:hover { background: var(--accent-ink); }
+.btn-primary:hover { background: var(--btn-bg-hover); }
 .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-primary:disabled { opacity: 0.55; cursor: default; }
 
@@ -209,15 +267,24 @@ body {
 .form-msg.success { background: var(--good-soft); color: var(--good); }
 
 /* ================= DASHBOARD ================= */
-.shell { max-width: 960px; margin: 0 auto; padding: 28px 20px 80px; }
+.shell { max-width: 960px; margin: 0 auto; padding: 100px 20px 80px; }
 
 .topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 22px;
-  margin-bottom: 26px;
-  border-bottom: 1px solid var(--line);
 }
 .topbar .brand-mark { margin-bottom: 0; justify-content: flex-start; }
 .topbar .brand-mark strong {
@@ -461,15 +528,28 @@ tbody tr:hover { background: var(--surface-2); }
   cursor: pointer;
 }
 .nav-tab:hover { color: var(--ink-900); }
-.nav-tab.is-active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.nav-tab.is-active { background: var(--nav-active-bg); color: var(--ink-900); font-weight: 600; }
 
-.role-badge {
+.role-pip-row { display: flex; align-items: center; gap: 6px; }
+.role-pip {
   font-size: 11px;
-  padding: 2px 8px;
+  font-weight: 600;
+  padding: 3px 9px;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
+.role-pip.role-admin { background: var(--role-admin-bg); color: var(--role-admin-ink); }
+.role-pip.role-doctor { background: var(--role-doctor-bg); color: var(--role-doctor-ink); }
+.role-pip.role-nurse { background: var(--role-nurse-bg); color: var(--role-nurse-ink); }
+
+/* 로그인한 계정의 역할만 강조, 나머진 흐리게 */
+#current-role-row .role-pip { opacity: 0.55; }
+#current-role-row .role-pip.is-active {
+  opacity: 1;
+  box-shadow: 0 0 0 1.5px currentColor;
+}
+
+.role-legend { justify-content: center; margin-top: 18px; }
 
 /* ================= SUBVIEWS ================= */
 .subview { display: none; }

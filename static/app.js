@@ -15,7 +15,10 @@ function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   currentStaff = null;
   currentPatient = null;
+  delete document.documentElement.dataset.role;
 }
+
+const ROLE_LABEL = { admin: "원장", doctor: "의사", nurse: "간호사" };
 
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("is-active"));
@@ -119,8 +122,12 @@ async function enterApp() {
   currentStaff = await res.json();
 
   document.getElementById("current-name").textContent = currentStaff.name;
-  document.getElementById("current-role").textContent =
-    currentStaff.role === "admin" ? "관리자" : "직원";
+
+  document.querySelectorAll("#current-role-row .role-pip").forEach((el) => {
+    el.classList.toggle("is-active", el.dataset.rolePip === currentStaff.role);
+  });
+
+  document.documentElement.dataset.role = currentStaff.role;
 
   navStaffTab.hidden = currentStaff.role !== "admin";
 
@@ -607,7 +614,7 @@ function renderStaffTable(staffList) {
         <tr data-id="${s.id}">
           <td>${s.name}</td>
           <td class="mono">${s.email}</td>
-          <td><span class="chip ${s.role === "admin" ? "warn" : "good"}">${s.role === "admin" ? "관리자" : "일반 직원"}</span></td>
+          <td><span class="role-pip role-${s.role}">${ROLE_LABEL[s.role] || s.role}</span></td>
           <td class="actions-cell">
             <button class="icon-btn" data-delete="${s.id}" title="삭제" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

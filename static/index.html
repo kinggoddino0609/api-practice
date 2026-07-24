@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>마이 헬스 로그 · 병원 차트</title>
+<title>공룡 병원 · 환자 차트</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,13 +13,11 @@
   <div class="login-wrap">
     <div>
       <div class="brand-mark">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path d="M2 13h4l2-7 4 14 3-9 2 5h5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>마이 헬스 로그</span>
+        <img src="logo.jpg" alt="" class="brand-logo" />
+        <span>공룡 병원</span>
       </div>
       <form class="login-card" id="auth-form" novalidate>
-        <h1 class="display">직원 로그인</h1>
+        <h1 class="display">로그인</h1>
         <p class="sub">발급받은 계정으로 로그인하세요</p>
 
         <div class="form-msg" id="auth-msg"></div>
@@ -34,6 +32,12 @@
         </div>
         <button class="btn-primary" type="submit" id="auth-submit">로그인</button>
         <p class="login-foot">계정이 없다면 관리자에게 발급을 요청하세요</p>
+
+        <div class="role-pip-row role-legend">
+          <span class="role-pip role-admin">원장</span>
+          <span class="role-pip role-doctor">의사</span>
+          <span class="role-pip role-nurse">간호사</span>
+        </div>
       </form>
     </div>
   </div>
@@ -43,20 +47,24 @@
 <section class="screen" id="view-app">
   <div class="shell">
     <div class="topbar">
-      <div class="brand-mark">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M2 13h4l2-7 4 14 3-9 2 5h5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <strong>마이 헬스 로그</strong>
-      </div>
-      <nav class="nav-tabs" id="nav-tabs">
-        <button type="button" class="nav-tab is-active" data-view="patients">환자 관리</button>
-        <button type="button" class="nav-tab" data-view="staff" id="nav-staff-tab" hidden>직원 관리</button>
-      </nav>
-      <div class="user-chip">
-        <span id="current-name"></span>
-        <span class="role-badge" id="current-role"></span>
-        <button type="button" id="logout-btn">로그아웃</button>
+      <div class="topbar-inner">
+        <div class="brand-mark">
+          <img src="logo.jpg" alt="" class="brand-logo" />
+          <strong>공룡 병원</strong>
+        </div>
+        <nav class="nav-tabs" id="nav-tabs">
+          <button type="button" class="nav-tab is-active" data-view="patients">환자 관리</button>
+          <button type="button" class="nav-tab" data-view="staff" id="nav-staff-tab" hidden>직원 관리</button>
+        </nav>
+        <div class="user-chip">
+          <span id="current-name"></span>
+          <div class="role-pip-row" id="current-role-row">
+            <span class="role-pip role-admin" data-role-pip="admin">원장</span>
+            <span class="role-pip role-doctor" data-role-pip="doctor">의사</span>
+            <span class="role-pip role-nurse" data-role-pip="nurse">간호사</span>
+          </div>
+          <button type="button" id="logout-btn">로그아웃</button>
+        </div>
       </div>
     </div>
 
@@ -253,8 +261,9 @@
           <div class="field">
             <label for="sf-role">역할</label>
             <select id="sf-role">
-              <option value="staff">일반 직원</option>
-              <option value="admin">관리자</option>
+              <option value="nurse">간호사</option>
+              <option value="doctor">의사</option>
+              <option value="admin">원장</option>
             </select>
           </div>
           <div class="field">

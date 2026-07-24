@@ -128,8 +128,8 @@ def main():
         db.close()
         return
 
-    nurse = get_or_create_staff(db, "nurse1@example.com", "nurse1234", "김간호", "staff")
-    doctor = get_or_create_staff(db, "doctor1@example.com", "doctor1234", "박의사", "staff")
+    nurse = get_or_create_staff(db, "nurse1@example.com", "nurse1234", "김간호", "nurse")
+    doctor = get_or_create_staff(db, "doctor1@example.com", "doctor1234", "박의사", "doctor")
 
     # 1. 홍길동 - 고혈압 악화 추세
     p1 = create_patient(db, "홍길동", "010-1234-5678", "1975-03-15", "M")

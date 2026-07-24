@@ -57,7 +57,7 @@ class StaffCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     name: str
-    role: Literal["admin", "staff"] = "staff"
+    role: Literal["admin", "doctor", "nurse"]
 
 
 class Token(BaseModel):
