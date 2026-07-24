@@ -196,6 +196,8 @@ body {
   text-transform: uppercase;
   color: var(--ink-600);
 }
+.login-wrap .brand-logo { width: 40px; height: 40px; }
+.login-wrap .brand-mark span { font-size: 21px; letter-spacing: 0.02em; }
 
 .login-card {
   width: 100%;
@@ -281,6 +283,7 @@ body {
   border-radius: 5px;
   margin-bottom: 16px;
   display: none;
+  white-space: pre-line;
 }
 .form-msg.show { display: block; }
 .form-msg.error { background: var(--crit-soft); color: var(--crit); }
@@ -339,6 +342,10 @@ body {
   color: var(--ink-400);
   margin: 0 0 10px;
 }
+#chart-today-label {
+  font-size: 15px;
+  margin-bottom: 14px;
+}
 
 .stat-row {
   display: grid;
@@ -346,6 +353,20 @@ body {
   gap: 14px;
   margin-bottom: 30px;
 }
+.stat-panel-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.stat-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 24px;
+}
+.stat-col .stat-card { padding: 10px 14px 10px; }
+.stat-col .stat-card .label { margin-bottom: 4px; }
+.stat-col .stat-card .value { font-size: 18px; }
+.stat-col .stat-card .chip { margin-top: 6px; }
 .stat-card {
   background: var(--surface);
   border: 1.5px solid var(--line-strong);
@@ -382,6 +403,7 @@ body {
 .chip.good { background: var(--good-soft); color: var(--good); }
 .chip.warn { background: var(--warn-soft); color: var(--warn); }
 .chip.crit { background: var(--crit-soft); color: var(--crit); }
+
 .chip::before {
   content: "";
   width: 6px; height: 6px;
@@ -406,9 +428,27 @@ body {
   font-size: 17px;
   margin: 0;
 }
-.panel-head .delta { font-size: 13px; }
-.panel-head .delta.down { color: var(--good); }
-.panel-head .delta.up { color: var(--crit); }
+.trend-tabs { display: flex; gap: 4px; }
+.trend-tab {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-600);
+  background: none;
+  border: none;
+  padding: 6px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.trend-tab:hover { color: var(--ink-900); }
+.trend-tab.is-active { background: var(--nav-active-bg); color: var(--ink-900); font-weight: 600; }
+
+.normal-range-note {
+  font-size: 11px;
+  color: var(--ink-400);
+  line-height: 1.7;
+  margin: 14px 0 0;
+}
+
 .chart-legend { display: flex; gap: 14px; }
 .legend-item {
   display: inline-flex;
@@ -433,7 +473,7 @@ canvas { width: 100%; display: block; }
 
 .grid-2 {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 18px;
   align-items: start;
 }

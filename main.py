@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -90,14 +90,38 @@ class AppointmentUpdate(BaseModel):
 
 class RecordIn(BaseModel):
     date: str
-    weight: float = Field(gt=0)
-    height: float = Field(gt=0)
-    systolic: int = Field(gt=0)
-    diastolic: int = Field(gt=0)
-    blood_sugar: int = Field(ge=0)
-    steps: int = Field(default=0, ge=0)
-    sleep_hours: float = Field(default=0.0, ge=0)
+    weight: float = Field(ge=1, le=300)
+    height: float = Field(ge=30, le=250)
+    systolic: int = Field(ge=50, le=250)
+    diastolic: int = Field(ge=30, le=200)
+    blood_sugar: int = Field(ge=20, le=600)
+    steps: int = Field(default=0, ge=0, le=100000)
+    sleep_hours: float = Field(default=0.0, ge=0, le=24)
     memo: str = ""
+
+    @model_validator(mode="after")
+    def validate_business_rules(self):
+        if self.systolic <= self.diastolic:
+            raise ValueError("수축기 혈압은 이완기 혈압보다 높아야 합니다.")
+
+        height_m = self.height / 100
+        bmi = self.weight / (height_m ** 2)
+
+        if bmi < 10 or bmi > 80:
+            raise ValueError("체중/키 조합으로 계산한 BMI가 비정상적입니다. 값을 다시 확인해주세요.")
+
+        try:
+            record_date = Date.fromisoformat(self.date)
+        except ValueError:
+            raise ValueError("날짜는 YYYY-MM-DD 형식으로 입력해주세요.")
+
+        if record_date > Date.today():
+            raise ValueError("미래로 가시려면 시간가속기를 발명하세요")
+
+        if record_date < Date(1990, 1, 1):
+            raise ValueError("과거에 머물지 말고 현재를 살아가세요")
+
+        return self
 
 
 def analyze_health(record: RecordIn):
@@ -515,6 +539,18 @@ def create_record(
     current_user: models.Staff = Depends(auth.get_current_user)
 ):
     get_patient_or_404(patient_id, db)
+
+    duplicate = db.query(models.Record).filter(
+        models.Record.patient_id == patient_id,
+        models.Record.date == record.date
+    ).first()
+
+    if duplicate:
+        raise HTTPException(
+            status_code=400,
+            detail="해당 날짜에 이미 기록이 있습니다. 기존 기록을 수정해주세요."
+        )
+
     analysis = analyze_health(record)
 
     new_record = models.Record(
@@ -590,6 +626,18 @@ def update_record(
         raise HTTPException(
             status_code=404,
             detail="해당 기록을 찾을 수 없습니다."
+        )
+
+    duplicate = db.query(models.Record).filter(
+        models.Record.patient_id == patient_id,
+        models.Record.date == record.date,
+        models.Record.id != record_id
+    ).first()
+
+    if duplicate:
+        raise HTTPException(
+            status_code=400,
+            detail="해당 날짜에 이미 다른 기록이 있습니다."
         )
 
     analysis = analyze_health(record)

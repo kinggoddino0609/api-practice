@@ -58,6 +58,17 @@ async function apiFetch(path, options = {}) {
   return res;
 }
 
+function formatApiError(detail, fallback) {
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e) => (e && e.msg ? e.msg.replace(/^Value error,\s*/, "") : String(e)))
+      .join("\n");
+  }
+  return fallback;
+}
+
 /* ---------------- 로그인 ---------------- */
 
 const authForm = document.getElementById("auth-form");
@@ -137,8 +148,17 @@ async function enterApp() {
     currentStaff.role === "doctor" ? `${currentStaff.name}님의 예약 목록` : "전체 예약 목록";
 
   showScreen("app");
-  showSubview("patients");
-  await loadAllPatients();
+
+  if (currentStaff.role === "admin") {
+    showSubview("staff");
+    await loadStaffList();
+  } else if (currentStaff.role === "doctor") {
+    showSubview("appointments");
+    await initAppointmentsTab();
+  } else {
+    showSubview("patients");
+    await loadAllPatients();
+  }
 }
 
 /* ---------------- 환자 검색 / 등록 / 목록 ---------------- */
@@ -252,7 +272,7 @@ patientRegisterForm.addEventListener("submit", async (e) => {
 
     if (!res.ok) {
       const body = await res.json();
-      throw new Error(body.detail ? JSON.stringify(body.detail) : "환자 등록에 실패했어요.");
+      throw new Error(formatApiError(body.detail, "환자 등록에 실패했어요."));
     }
 
     const patient = await res.json();
@@ -513,9 +533,6 @@ const chartBackBtn = document.getElementById("chart-back-btn");
 const patientInfoBar = document.getElementById("patient-info-bar");
 const chartStatRow = document.getElementById("chart-stat-row");
 const chartRecordsTbody = document.getElementById("chart-records-tbody");
-const chartTrendDelta = document.getElementById("chart-trend-delta");
-const chartWrapWeight = document.getElementById("chart-wrap-weight");
-const chartWrapBp = document.getElementById("chart-wrap-bp");
 const chartRecordForm = document.getElementById("chart-record-form");
 const chartRecordMsg = document.getElementById("chart-record-msg");
 const chartTodayLabel = document.getElementById("chart-today-label");
@@ -546,20 +563,10 @@ function sevClass(sev) {
   return sev === 2 ? "crit" : sev === 1 ? "warn" : "good";
 }
 
-function worstOf(record) {
-  const items = [
-    { label: record.bp_category, sev: severity("bp", record.bp_category) },
-    { label: record.sugar_category, sev: severity("sugar", record.sugar_category) },
-    { label: record.bmi_category, sev: severity("bmi", record.bmi_category) }
-  ];
-  items.sort((a, b) => b.sev - a.sev);
-  return items[0];
-}
-
 function renderChartStatRow(latest) {
   if (!latest) {
     chartStatRow.innerHTML =
-      '<div class="panel" style="grid-column: 1 / -1; padding: 20px; color: var(--ink-600);">' +
+      '<div class="panel" style="padding: 20px; color: var(--ink-600);">' +
       "아직 진료 기록이 없어요. 왼쪽 폼에서 첫 기록을 남겨보세요." +
       "</div>";
     return;
@@ -593,7 +600,11 @@ function renderChartStatRow(latest) {
   `;
 }
 
+let chartRecords = [];
+
 function renderChartRecordsTable(records) {
+  chartRecords = records;
+
   if (records.length === 0) {
     chartRecordsTbody.innerHTML =
       '<tr class="empty-row"><td colspan="7">등록된 기록이 없어요.</td></tr>';
@@ -604,7 +615,10 @@ function renderChartRecordsTable(records) {
 
   chartRecordsTbody.innerHTML = sorted
     .map((r) => {
-      const worst = worstOf(r);
+      const bmiCls = sevClass(severity("bmi", r.bmi_category));
+      const bpCls = sevClass(severity("bp", r.bp_category));
+      const sugarCls = sevClass(severity("sugar", r.sugar_category));
+
       const hasWarnings = r.warnings && r.warnings.length > 0;
       const warnIcon = hasWarnings
         ? `<span class="warn-icon" title="${r.warnings.join(" ")}">
@@ -615,12 +629,15 @@ function renderChartRecordsTable(records) {
       return `
         <tr data-id="${r.id}">
           <td class="date-cell">${r.date}</td>
-          <td class="num mono">${r.weight.toFixed(1)}</td>
-          <td class="num mono">${r.bmi.toFixed(1)}</td>
-          <td class="num mono">${r.systolic}/${r.diastolic}</td>
-          <td class="num mono">${r.blood_sugar}</td>
-          <td><span class="chip ${sevClass(worst.sev)}">${worst.label}</span> ${warnIcon}</td>
+          <td class="num mono">${r.weight.toFixed(1)} <span class="chip ${bmiCls}">${r.bmi_category}</span></td>
+          <td class="num mono">${r.bmi.toFixed(1)} <span class="chip ${bmiCls}">${r.bmi_category}</span></td>
+          <td class="num mono">${r.systolic}/${r.diastolic} <span class="chip ${bpCls}">${r.bp_category}</span></td>
+          <td class="num mono">${r.blood_sugar} <span class="chip ${sugarCls}">${r.sugar_category}</span></td>
+          <td>${warnIcon}</td>
           <td class="actions-cell">
+            <button class="icon-btn" data-edit="${r.id}" title="수정" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
             <button class="icon-btn" data-delete="${r.id}" title="삭제" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
@@ -630,12 +647,61 @@ function renderChartRecordsTable(records) {
     })
     .join("");
 
+  chartRecordsTbody.querySelectorAll("[data-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const record = chartRecords.find((r) => String(r.id) === btn.dataset.edit);
+      if (record) startEditRecord(record);
+    });
+  });
+
   chartRecordsTbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", () => deleteRecord(btn.dataset.delete));
   });
 }
 
-function renderLineChart(canvas, seriesList) {
+const TREND_METRICS = {
+  bmi: {
+    getSeries: (recent) => [
+      {
+        data: recent.map((r) => r.bmi),
+        pointSeverity: recent.map((r) => severity("bmi", r.bmi_category)),
+        pointLabels: recent.map((r) => `${r.height}cm/${r.weight.toFixed(1)}kg`)
+      }
+    ]
+  },
+  bp: {
+    getSeries: (recent) => {
+      const sev = recent.map((r) => severity("bp", r.bp_category));
+      return [
+        {
+          data: recent.map((r) => r.systolic),
+          pointSeverity: sev,
+          pointLabels: recent.map((r) => String(r.systolic))
+        },
+        {
+          data: recent.map((r) => r.diastolic),
+          pointSeverity: sev,
+          pointLabels: recent.map((r) => String(r.diastolic)),
+          dashed: true
+        }
+      ];
+    }
+  },
+  sugar: {
+    getSeries: (recent) => [
+      {
+        data: recent.map((r) => r.blood_sugar),
+        pointSeverity: recent.map((r) => severity("sugar", r.sugar_category))
+      }
+    ]
+  }
+};
+
+function sevColorToken(sev) {
+  return sev === 2 ? "--crit" : sev === 1 ? "--warn" : "--good";
+}
+
+function renderPointColoredChart(canvas, series) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight || canvas.height;
@@ -648,9 +714,15 @@ function renderLineChart(canvas, seriesList) {
   const styles = getComputedStyle(document.documentElement);
   const gridLine = styles.getPropertyValue("--line").trim();
   const surface = styles.getPropertyValue("--surface").trim();
+  const lineColor = styles.getPropertyValue("--ink-400").trim();
+  const labelColor = styles.getPropertyValue("--ink-400").trim();
+  const resolve = (token) => styles.getPropertyValue(token).trim();
 
-  const pad = { top: 12, right: 12, bottom: 8, left: 12 };
-  const allValues = seriesList.flatMap((s) => s.data);
+  const pad = { top: 26, right: 14, bottom: 10, left: 38 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  const allValues = series.flatMap((s) => s.data);
   const min = Math.min(...allValues) - 3;
   const max = Math.max(...allValues) + 3;
 
@@ -658,34 +730,26 @@ function renderLineChart(canvas, seriesList) {
   ctx.lineWidth = 1;
   const rows = 2;
   for (let r = 0; r <= rows; r++) {
-    const y = pad.top + ((h - pad.top - pad.bottom) / rows) * r;
+    const y = pad.top + (plotH / rows) * r;
     ctx.beginPath();
     ctx.moveTo(pad.left, y + 0.5);
     ctx.lineTo(w - pad.right, y + 0.5);
     ctx.stroke();
   }
 
-  const xAt = (i, len) =>
-    len === 1 ? w / 2 : pad.left + ((w - pad.left - pad.right) / (len - 1)) * i;
-  const yAt = (v) => pad.top + (h - pad.top - pad.bottom) * (1 - (v - min) / (max - min));
+  ctx.fillStyle = labelColor;
+  ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ctx.fillText(Math.round(max), pad.left - 8, pad.top);
+  ctx.fillText(Math.round(min), pad.left - 8, h - pad.bottom);
 
-  seriesList.forEach((s) => {
+  const xAt = (i, len) => (len === 1 ? pad.left + plotW / 2 : pad.left + (plotW / (len - 1)) * i);
+  const yAt = (v) => pad.top + plotH * (1 - (v - min) / (max - min));
+
+  series.forEach((s) => {
     const data = s.data;
     const len = data.length;
-
-    if (s.fill && len >= 2) {
-      const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
-      grad.addColorStop(0, s.color + "33");
-      grad.addColorStop(1, s.color + "00");
-      ctx.beginPath();
-      ctx.moveTo(xAt(0, len), yAt(data[0]));
-      data.forEach((v, i) => ctx.lineTo(xAt(i, len), yAt(v)));
-      ctx.lineTo(xAt(len - 1, len), h - pad.bottom);
-      ctx.lineTo(xAt(0, len), h - pad.bottom);
-      ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
-    }
 
     if (len >= 2) {
       ctx.beginPath();
@@ -695,8 +759,8 @@ function renderLineChart(canvas, seriesList) {
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1.5;
       ctx.lineJoin = "round";
       if (s.dashed) ctx.setLineDash([4, 3]);
       ctx.stroke();
@@ -707,69 +771,78 @@ function renderLineChart(canvas, seriesList) {
       const x = xAt(i, len);
       const y = yAt(v);
       const isLast = i === len - 1;
+      const dotColor = resolve(sevColorToken(s.pointSeverity[i]));
       ctx.beginPath();
-      ctx.arc(x, y, isLast ? 3.5 : 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = isLast ? s.color : surface;
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 1.3;
+      ctx.arc(x, y, isLast ? 5 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = dotColor;
+      ctx.strokeStyle = surface;
+      ctx.lineWidth = 1.5;
       ctx.fill();
       ctx.stroke();
+
+      if (s.pointLabels) {
+        ctx.fillStyle = labelColor;
+        ctx.font = "9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(s.pointLabels[i], x, y - 8);
+      }
     });
   });
 }
 
-function drawWeightTrend(records) {
+let currentTrendMetric = "bmi";
+
+function drawTrendChart(metric, records) {
+  currentTrendMetric = metric;
+
+  document.querySelectorAll("#trend-tabs .trend-tab").forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.metric === metric);
+  });
+  document.getElementById("trend-bp-legend").hidden = metric !== "bp";
+
+  const wrap = document.getElementById("chart-wrap-trend");
   const recent = [...records].sort((a, b) => (a.date > b.date ? 1 : -1)).slice(-8);
 
   if (recent.length === 0) {
-    chartWrapWeight.innerHTML = '<div class="chart-empty">기록이 쌓이면 체중 추이를 보여드릴게요.</div>';
-    chartTrendDelta.textContent = "";
+    wrap.innerHTML = '<div class="chart-empty">기록이 쌓이면 추이를 보여드릴게요.</div>';
     return;
   }
 
-  if (!document.getElementById("chart-trend-weight")) {
-    chartWrapWeight.innerHTML = '<canvas id="chart-trend-weight" height="90"></canvas>';
+  if (!document.getElementById("chart-trend-canvas")) {
+    wrap.innerHTML = '<canvas id="chart-trend-canvas" height="120"></canvas>';
   }
 
-  const data = recent.map((r) => r.weight);
-
-  if (data.length >= 2) {
-    const diff = data[data.length - 1] - data[0];
-    chartTrendDelta.textContent =
-      (diff <= 0 ? "▾ " : "▴ ") + Math.abs(diff).toFixed(1) + "kg (구간 내 변화)";
-    chartTrendDelta.className = "delta mono " + (diff <= 0 ? "down" : "up");
-  } else {
-    chartTrendDelta.textContent = "";
-  }
-
-  const styles = getComputedStyle(document.documentElement);
-  const accent = styles.getPropertyValue("--accent").trim();
-
-  renderLineChart(document.getElementById("chart-trend-weight"), [
-    { data, color: accent, fill: true }
-  ]);
+  const series = TREND_METRICS[metric].getSeries(recent);
+  renderPointColoredChart(document.getElementById("chart-trend-canvas"), series);
 }
 
-function drawBpTrend(records) {
-  const recent = [...records].sort((a, b) => (a.date > b.date ? 1 : -1)).slice(-8);
+document.getElementById("trend-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".trend-tab");
+  if (!btn) return;
+  drawTrendChart(btn.dataset.metric, chartRecords);
+});
 
-  if (recent.length === 0) {
-    chartWrapBp.innerHTML = '<div class="chart-empty">기록이 쌓이면 혈압 추이를 보여드릴게요.</div>';
+function renderNormalRangeNote(latest) {
+  const note = document.getElementById("normal-range-note");
+
+  if (!latest) {
+    note.textContent = "";
     return;
   }
 
-  if (!document.getElementById("chart-trend-bp")) {
-    chartWrapBp.innerHTML = '<canvas id="chart-trend-bp" height="90"></canvas>';
-  }
+  const heightM = latest.height / 100;
+  const weightLow = (18.5 * heightM * heightM).toFixed(1);
+  const weightHigh = (22.9 * heightM * heightM).toFixed(1);
 
-  const styles = getComputedStyle(document.documentElement);
-  const accent = styles.getPropertyValue("--accent").trim();
-  const muted = styles.getPropertyValue("--ink-400").trim();
+  note.innerHTML = `
+    정상 범위 · 체중 ${weightLow}~${weightHigh}kg (키 ${latest.height}cm 기준)<br />
+    BMI 18.5~22.9 · 혈압 120/80 미만 · 공복혈당 100 미만
+  `;
+}
 
-  renderLineChart(document.getElementById("chart-trend-bp"), [
-    { data: recent.map((r) => r.systolic), color: accent },
-    { data: recent.map((r) => r.diastolic), color: muted, dashed: true }
-  ]);
+function drawTrendCharts(records) {
+  drawTrendChart(currentTrendMetric, records);
 }
 
 async function loadPatientChart() {
@@ -779,9 +852,9 @@ async function loadPatientChart() {
 
   const latest = [...records].sort((a, b) => (a.date > b.date ? -1 : 1))[0];
   renderChartStatRow(latest);
+  renderNormalRangeNote(latest);
   renderChartRecordsTable(records);
-  drawWeightTrend(records);
-  drawBpTrend(records);
+  drawTrendCharts(records);
 }
 
 async function openPatientChart(patientId) {
@@ -796,7 +869,7 @@ async function openPatientChart(patientId) {
   `;
 
   const today = new Date().toISOString().slice(0, 10);
-  document.getElementById("cf-date").value = today;
+  cancelEditRecord();
   document.getElementById("af-date").value = today;
   chartTodayLabel.textContent = "오늘의 요약 · " + today;
 
@@ -810,6 +883,46 @@ async function deleteRecord(id) {
   await apiFetch(`/patients/${currentPatient.id}/records/${id}`, { method: "DELETE" });
   await loadPatientChart();
 }
+
+let editingRecordId = null;
+
+const chartRecordFormTitle = document.getElementById("chart-record-form-title");
+const chartRecordSubmitBtn = document.getElementById("chart-record-submit-btn");
+const chartRecordCancelEdit = document.getElementById("chart-record-cancel-edit");
+
+function startEditRecord(record) {
+  editingRecordId = record.id;
+
+  document.getElementById("cf-date").value = record.date;
+  document.getElementById("cf-weight").value = record.weight;
+  document.getElementById("cf-height").value = record.height;
+  document.getElementById("cf-systolic").value = record.systolic;
+  document.getElementById("cf-diastolic").value = record.diastolic;
+  document.getElementById("cf-sugar").value = record.blood_sugar;
+  document.getElementById("cf-steps").value = record.steps;
+  document.getElementById("cf-sleep").value = record.sleep_hours;
+  document.getElementById("cf-memo").value = record.memo;
+
+  chartRecordFormTitle.textContent = "진료 기록 수정";
+  chartRecordSubmitBtn.textContent = "수정 완료";
+  chartRecordCancelEdit.hidden = false;
+  hideMsg(chartRecordMsg);
+}
+
+function cancelEditRecord() {
+  editingRecordId = null;
+  chartRecordForm.reset();
+  document.getElementById("cf-date").value = new Date().toISOString().slice(0, 10);
+  chartRecordFormTitle.textContent = "진료 기록 추가";
+  chartRecordSubmitBtn.textContent = "저장";
+  chartRecordCancelEdit.hidden = true;
+  hideMsg(chartRecordMsg);
+}
+
+chartRecordCancelEdit.addEventListener("click", (e) => {
+  e.preventDefault();
+  cancelEditRecord();
+});
 
 chartRecordForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -827,21 +940,27 @@ chartRecordForm.addEventListener("submit", async (e) => {
     memo: document.getElementById("cf-memo").value
   };
 
+  const isEditing = editingRecordId !== null;
+  const url = isEditing
+    ? `/patients/${currentPatient.id}/records/${editingRecordId}`
+    : `/patients/${currentPatient.id}/records`;
+
   try {
-    const res = await apiFetch(`/patients/${currentPatient.id}/records`, {
-      method: "POST",
+    const res = await apiFetch(url, {
+      method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
       const body = await res.json();
-      throw new Error(body.detail ? JSON.stringify(body.detail) : "기록 저장에 실패했어요.");
+      throw new Error(formatApiError(body.detail, "기록 저장에 실패했어요."));
     }
 
-    document.getElementById("cf-memo").value = "";
+    const wasEditing = isEditing;
+    cancelEditRecord();
     await loadPatientChart();
-    showMsg(chartRecordMsg, "기록이 저장됐어요.", "success");
+    showMsg(chartRecordMsg, wasEditing ? "기록이 수정됐어요." : "기록이 저장됐어요.", "success");
   } catch (err) {
     showMsg(chartRecordMsg, err.message, "error");
   }
@@ -937,7 +1056,7 @@ apptForm.addEventListener("submit", async (e) => {
 
     if (!res.ok) {
       const body = await res.json();
-      throw new Error(body.detail ? JSON.stringify(body.detail) : "예약 등록에 실패했어요.");
+      throw new Error(formatApiError(body.detail, "예약 등록에 실패했어요."));
     }
 
     document.getElementById("af-reason").value = "";
@@ -1013,7 +1132,7 @@ staffCreateForm.addEventListener("submit", async (e) => {
 
     if (!res.ok) {
       const body = await res.json();
-      throw new Error(body.detail ? JSON.stringify(body.detail) : "계정 발급에 실패했어요.");
+      throw new Error(formatApiError(body.detail, "계정 발급에 실패했어요."));
     }
 
     staffCreateForm.reset();
