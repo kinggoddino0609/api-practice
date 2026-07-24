@@ -28,6 +28,11 @@
   --btn-bg: #55595f;
   --btn-bg-hover: #3d4045;
   --nav-active-bg: #dfe1e3;
+  --heat-1: #ececed;
+  --heat-2: #d2d4d6;
+  --heat-3: #adb0b4;
+  --cal-cell-shadow: 0 1px 3px rgba(15, 15, 20, 0.12), 0 0 0 1px rgba(15, 15, 20, 0.03);
+  --cal-cell-shadow-hover: 0 2px 6px rgba(15, 15, 20, 0.16), 0 0 0 1px rgba(15, 15, 20, 0.05);
 }
 
 /* 역할별 페이지 배경 틴트 (아주 연하게) */
@@ -61,6 +66,11 @@
     --role-nurse-bg: #391f2a;
     --role-nurse-ink: #eaa8c4;
     --nav-active-bg: #343b41;
+    --heat-1: #34383d;
+    --heat-2: #4d525a;
+    --heat-3: #6e7379;
+    --cal-cell-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --cal-cell-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
   }
   :root[data-role="admin"] { --page-tint: #1c1a11; }
   :root[data-role="doctor"] { --page-tint: #121a20; }
@@ -91,6 +101,11 @@
   --role-nurse-bg: #391f2a;
   --role-nurse-ink: #eaa8c4;
   --nav-active-bg: #343b41;
+  --heat-1: #34383d;
+  --heat-2: #4d525a;
+  --heat-3: #6e7379;
+  --cal-cell-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --cal-cell-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 :root[data-theme="dark"][data-role="admin"] { --page-tint: #1c1a11; }
 :root[data-theme="dark"][data-role="doctor"] { --page-tint: #121a20; }
@@ -119,6 +134,11 @@
   --role-doctor-ink: #1d5185;
   --role-nurse-bg: #fbe3ec;
   --role-nurse-ink: #99315c;
+  --heat-1: #ececed;
+  --heat-2: #d2d4d6;
+  --heat-3: #adb0b4;
+  --cal-cell-shadow: 0 1px 3px rgba(15, 15, 20, 0.12), 0 0 0 1px rgba(15, 15, 20, 0.03);
+  --cal-cell-shadow-hover: 0 2px 6px rgba(15, 15, 20, 0.16), 0 0 0 1px rgba(15, 15, 20, 0.05);
 }
 :root[data-theme="light"][data-role="admin"] { --page-tint: #fdfbf1; }
 :root[data-theme="light"][data-role="doctor"] { --page-tint: #f1f6fb; }
@@ -550,6 +570,107 @@ tbody tr:hover { background: var(--surface-2); }
 }
 
 .role-legend { justify-content: center; margin-top: 18px; }
+
+/* ================= APPOINTMENTS ================= */
+#appt-date-picker {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--ink-900);
+}
+
+.appt-status-select {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.appt-status-select.scheduled { background: var(--accent-soft); color: var(--accent-ink); }
+.appt-status-select.done { background: var(--good-soft); color: var(--good); }
+.appt-status-select.cancelled { background: var(--surface-2); color: var(--ink-400); }
+
+/* ================= 예약 캘린더 ================= */
+.cal-nav { display: flex; gap: 6px; }
+.cal-nav button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-600);
+  background: none;
+  border: 1px solid var(--line-strong);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.cal-nav button:hover { color: var(--ink-900); border-color: var(--ink-900); }
+
+.cal-wrap { padding: 4px 20px 20px; }
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+.cal-weekdays span {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-400);
+  padding-bottom: 6px;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.cal-cell {
+  aspect-ratio: 1.6 / 1;
+  border-radius: 10px;
+  box-shadow: var(--cal-cell-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.cal-cell:hover { box-shadow: var(--cal-cell-shadow-hover); }
+.cal-cell.empty { visibility: hidden; cursor: default; box-shadow: none; }
+.cal-cell.is-today { box-shadow: var(--cal-cell-shadow), 0 0 0 1.5px #1a73e8; }
+.cal-cell.is-selected { background: var(--accent-soft); }
+
+.cal-day-num {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-900);
+}
+.cal-cell.is-sunday .cal-day-num { color: #e8261c; }
+.cal-cell.is-today .cal-day-num { color: #1a73e8; }
+.cal-cell.is-selected .cal-day-num { color: var(--accent-ink); }
+
+.cal-count-pill {
+  min-width: 32px;
+  min-height: 17px;
+  font-size: 11.5px;
+  font-weight: 400;
+  padding: 1px 7px;
+  border-radius: 999px;
+  text-align: center;
+  color: var(--ink-900);
+}
+.cal-count-pill.level-1 { background: var(--heat-1); }
+.cal-count-pill.level-2 { background: var(--heat-2); }
+.cal-count-pill.level-3 { background: var(--heat-3); }
 
 /* ================= SUBVIEWS ================= */
 .subview { display: none; }

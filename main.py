@@ -41,7 +41,7 @@ def bootstrap_admin():
         admin = models.Staff(
             email=admin_email,
             hashed_password=auth.hash_password(admin_password),
-            name="관리자",
+            name=os.environ.get("ADMIN_NAME", "관리자"),
             role="admin"
         )
         db.add(admin)
@@ -70,6 +70,21 @@ class PatientCreate(BaseModel):
     phone: str
     birth_date: str
     gender: str
+
+
+class AppointmentIn(BaseModel):
+    staff_id: int
+    date: str
+    time: str
+    reason: str = ""
+
+
+class AppointmentUpdate(BaseModel):
+    staff_id: int
+    date: str
+    time: str
+    reason: str = ""
+    status: Literal["예정", "완료", "취소"] = "예정"
 
 
 class RecordIn(BaseModel):
@@ -169,6 +184,18 @@ def record_to_dict(record: models.Record):
         "bp_category": record.bp_category,
         "sugar_category": record.sugar_category,
         "warnings": json.loads(record.warnings)
+    }
+
+
+def appointment_to_dict(appointment: models.Appointment):
+    return {
+        "id": appointment.id,
+        "patient_id": appointment.patient_id,
+        "staff_id": appointment.staff_id,
+        "date": appointment.date,
+        "time": appointment.time,
+        "reason": appointment.reason,
+        "status": appointment.status
     }
 
 
@@ -277,6 +304,18 @@ def delete_staff(
     return {"message": "직원 계정이 삭제되었습니다."}
 
 
+@app.get("/doctors")
+def list_doctors(
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    doctors = db.query(models.Staff).filter(models.Staff.role.in_(["doctor", "admin"])).all()
+
+    return {
+        "doctors": [staff_to_dict(d) for d in doctors]
+    }
+
+
 @app.post("/patients")
 def create_patient(
     patient: PatientCreate,
@@ -348,6 +387,123 @@ def get_patient(
 ):
     patient = get_patient_or_404(patient_id, db)
     return patient_to_dict(patient)
+
+
+@app.post("/patients/{patient_id}/appointments")
+def create_appointment(
+    patient_id: int,
+    appointment: AppointmentIn,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    get_patient_or_404(patient_id, db)
+
+    staff = db.query(models.Staff).filter(models.Staff.id == appointment.staff_id).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=404,
+            detail="담당 직원을 찾을 수 없습니다."
+        )
+
+    new_appointment = models.Appointment(
+        patient_id=patient_id,
+        staff_id=appointment.staff_id,
+        date=appointment.date,
+        time=appointment.time,
+        reason=appointment.reason
+    )
+
+    db.add(new_appointment)
+    db.commit()
+    db.refresh(new_appointment)
+
+    return appointment_to_dict(new_appointment)
+
+
+@app.get("/patients/{patient_id}/appointments")
+def get_patient_appointments(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    get_patient_or_404(patient_id, db)
+    appointments = (
+        db.query(models.Appointment)
+        .filter(models.Appointment.patient_id == patient_id)
+        .order_by(models.Appointment.date, models.Appointment.time)
+        .all()
+    )
+
+    return {
+        "count": len(appointments),
+        "appointments": [appointment_to_dict(a) for a in appointments]
+    }
+
+
+@app.put("/patients/{patient_id}/appointments/{appointment_id}")
+def update_appointment(
+    patient_id: int,
+    appointment_id: int,
+    appointment: AppointmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    get_patient_or_404(patient_id, db)
+    existing = db.query(models.Appointment).filter(
+        models.Appointment.id == appointment_id,
+        models.Appointment.patient_id == patient_id
+    ).first()
+
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 예약을 찾을 수 없습니다."
+        )
+
+    staff = db.query(models.Staff).filter(models.Staff.id == appointment.staff_id).first()
+
+    if not staff:
+        raise HTTPException(
+            status_code=404,
+            detail="담당 직원을 찾을 수 없습니다."
+        )
+
+    existing.staff_id = appointment.staff_id
+    existing.date = appointment.date
+    existing.time = appointment.time
+    existing.reason = appointment.reason
+    existing.status = appointment.status
+
+    db.commit()
+    db.refresh(existing)
+
+    return appointment_to_dict(existing)
+
+
+@app.delete("/patients/{patient_id}/appointments/{appointment_id}")
+def delete_appointment(
+    patient_id: int,
+    appointment_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    get_patient_or_404(patient_id, db)
+    appointment = db.query(models.Appointment).filter(
+        models.Appointment.id == appointment_id,
+        models.Appointment.patient_id == patient_id
+    ).first()
+
+    if not appointment:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 예약을 찾을 수 없습니다."
+        )
+
+    db.delete(appointment)
+    db.commit()
+
+    return {"message": "예약이 삭제되었습니다."}
 
 
 @app.post("/patients/{patient_id}/records")
@@ -548,4 +704,76 @@ def get_stats(
         "average_bmi": round(avg_bmi, 2),
         "average_steps": round(avg_steps, 2),
         "average_sleep_hours": round(avg_sleep_hours, 2)
+    }
+
+
+@app.get("/appointments")
+def list_appointments_by_date(
+    date: str,
+    staff_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    try:
+        Date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="날짜는 YYYY-MM-DD 형식으로 입력해주세요."
+        )
+
+    query = (
+        db.query(models.Appointment, models.Patient, models.Staff)
+        .join(models.Patient, models.Appointment.patient_id == models.Patient.id)
+        .join(models.Staff, models.Appointment.staff_id == models.Staff.id)
+        .filter(models.Appointment.date == date)
+    )
+
+    # 의사는 본인 담당 예약만 (staff_id 파라미터가 있어도 무시), 원장/간호사는 staff_id로 특정 의사만 필터 가능
+    if current_user.role == "doctor":
+        query = query.filter(models.Appointment.staff_id == current_user.id)
+    elif staff_id is not None:
+        query = query.filter(models.Appointment.staff_id == staff_id)
+
+    rows = query.order_by(models.Appointment.time).all()
+
+    appointments = []
+
+    for appointment, patient, staff in rows:
+        item = appointment_to_dict(appointment)
+        item["patient_name"] = patient.name
+        item["staff_name"] = staff.name
+        appointments.append(item)
+
+    return {
+        "count": len(appointments),
+        "appointments": appointments
+    }
+
+
+@app.get("/appointments/summary")
+def get_appointments_summary(
+    year: int,
+    month: int = Query(ge=1, le=12),
+    staff_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.Staff = Depends(auth.get_current_user)
+):
+    if current_user.role == "doctor":
+        staff_id = current_user.id
+
+    month_prefix = f"{year:04d}-{month:02d}"
+
+    query = (
+        db.query(models.Appointment.date, func.count(models.Appointment.id))
+        .filter(models.Appointment.date.like(f"{month_prefix}%"))
+    )
+
+    if staff_id is not None:
+        query = query.filter(models.Appointment.staff_id == staff_id)
+
+    rows = query.group_by(models.Appointment.date).all()
+
+    return {
+        "counts": {day: count for day, count in rows}
     }

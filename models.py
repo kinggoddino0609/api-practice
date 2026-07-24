@@ -10,7 +10,7 @@ class Staff(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="staff")  # "admin" | "staff"
+    role = Column(String, nullable=False)  # "admin" | "doctor" | "nurse"
 
 
 class Patient(Base):
@@ -46,3 +46,16 @@ class Record(Base):
     bp_category = Column(String, nullable=False)
     sugar_category = Column(String, nullable=False)
     warnings = Column(String, nullable=False, default="[]")
+
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
+
+    date = Column(String, nullable=False, index=True)
+    time = Column(String, nullable=False)
+    reason = Column(String, default="")
+    status = Column(String, nullable=False, default="예정")  # "예정" | "완료" | "취소"

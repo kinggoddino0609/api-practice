@@ -115,6 +115,7 @@ document.getElementById("nav-tabs").addEventListener("click", (e) => {
   showSubview(view);
   if (view === "patients") loadAllPatients();
   if (view === "staff") loadStaffList();
+  if (view === "appointments") initAppointmentsTab();
 });
 
 async function enterApp() {
@@ -130,6 +131,8 @@ async function enterApp() {
   document.documentElement.dataset.role = currentStaff.role;
 
   navStaffTab.hidden = currentStaff.role !== "admin";
+  apptPanelTitle.textContent =
+    currentStaff.role === "doctor" ? `${currentStaff.name}님의 예약 목록` : "전체 예약 목록";
 
   showScreen("app");
   showSubview("patients");
@@ -258,6 +261,249 @@ patientRegisterForm.addEventListener("submit", async (e) => {
     showMsg(patientRegisterMsg, err.message, "error");
   }
 });
+
+/* ---------------- 오늘 예약 ---------------- */
+
+const apptDatePicker = document.getElementById("appt-date-picker");
+const appointmentsTbody = document.getElementById("appointments-tbody");
+const apptPanelTitle = document.getElementById("appt-panel-title");
+const apptFilterPanel = document.getElementById("appt-filter-panel");
+const apptDoctorFilter = document.getElementById("appt-doctor-filter");
+const apptCalendarPanel = document.getElementById("appt-calendar-panel");
+const apptCalendarTitle = document.getElementById("appt-calendar-title");
+const calGrid = document.getElementById("cal-grid");
+const calPrevBtn = document.getElementById("cal-prev-btn");
+const calNextBtn = document.getElementById("cal-next-btn");
+
+let todayAppointments = [];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+
+function apptStatusClass(status) {
+  if (status === "완료") return "done";
+  if (status === "취소") return "cancelled";
+  return "scheduled";
+}
+
+function apptStatusOptions(current) {
+  return ["예정", "완료", "취소"]
+    .map((s) => `<option value="${s}" ${s === current ? "selected" : ""}>${s}</option>`)
+    .join("");
+}
+
+async function loadDoctorList(selectEl) {
+  const res = await apiFetch("/doctors");
+  const data = await res.json();
+  selectEl.innerHTML = data.doctors
+    .map((d) => `<option value="${d.id}">${d.name} (${ROLE_LABEL[d.role] || d.role})</option>`)
+    .join("");
+}
+
+async function populateDoctorFilter() {
+  const res = await apiFetch("/doctors");
+  const data = await res.json();
+  apptDoctorFilter.innerHTML =
+    '<option value="">전체 (목록만 보기)</option>' +
+    data.doctors
+      .map((d) => `<option value="${d.id}">${d.name} (${ROLE_LABEL[d.role] || d.role})</option>`)
+      .join("");
+}
+
+function selectedApptStaffId() {
+  return apptDoctorFilter.value || null;
+}
+
+function heatLevel(count) {
+  if (count === 0) return 0;
+  if (count <= 3) return 1;
+  if (count <= 7) return 2;
+  return 3;
+}
+
+function renderCalendar(counts) {
+  const firstWeekday = new Date(calYear, calMonth - 1, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const selectedDate = apptDatePicker.value;
+
+  let cells = "";
+  for (let i = 0; i < firstWeekday; i++) {
+    cells += '<div class="cal-cell empty"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const count = counts[dateStr] || 0;
+    const isSunday = new Date(calYear, calMonth - 1, d).getDay() === 0;
+
+    const classes = ["cal-cell"];
+    if (isSunday) classes.push("is-sunday");
+    if (dateStr === todayStr) classes.push("is-today");
+    if (dateStr === selectedDate) classes.push("is-selected");
+
+    const pillClass = count > 0 ? `level-${heatLevel(count)}` : "";
+
+    cells += `
+      <div class="${classes.join(" ")}" data-date="${dateStr}">
+        <span class="cal-day-num">${d}</span>
+        <span class="cal-count-pill ${pillClass}">${count > 0 ? count + "건" : ""}</span>
+      </div>
+    `;
+  }
+
+  calGrid.innerHTML = cells;
+
+  calGrid.querySelectorAll("[data-date]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      apptDatePicker.value = cell.dataset.date;
+      loadTodayAppointments();
+      renderCalendar(counts);
+    });
+  });
+}
+
+async function loadCalendar() {
+  const staffId = selectedApptStaffId();
+
+  if (!staffId) {
+    apptCalendarPanel.hidden = true;
+    return;
+  }
+
+  apptCalendarPanel.hidden = false;
+  apptCalendarTitle.textContent = `${calYear}년 ${calMonth}월`;
+
+  const params = new URLSearchParams({ year: calYear, month: calMonth, staff_id: staffId });
+  const res = await apiFetch("/appointments/summary?" + params.toString());
+  const data = await res.json();
+  renderCalendar(data.counts);
+}
+
+calPrevBtn.addEventListener("click", () => {
+  calMonth -= 1;
+  if (calMonth < 1) {
+    calMonth = 12;
+    calYear -= 1;
+  }
+  loadCalendar();
+});
+
+calNextBtn.addEventListener("click", () => {
+  calMonth += 1;
+  if (calMonth > 12) {
+    calMonth = 1;
+    calYear += 1;
+  }
+  loadCalendar();
+});
+
+apptDoctorFilter.addEventListener("change", () => {
+  calYear = new Date().getFullYear();
+  calMonth = new Date().getMonth() + 1;
+  loadCalendar();
+  loadTodayAppointments();
+});
+
+async function initAppointmentsTab() {
+  await populateDoctorFilter();
+
+  if (currentStaff.role === "doctor") {
+    apptFilterPanel.hidden = true;
+    apptDoctorFilter.value = String(currentStaff.id);
+  } else {
+    apptFilterPanel.hidden = false;
+    apptDoctorFilter.value = "";
+  }
+
+  calYear = new Date().getFullYear();
+  calMonth = new Date().getMonth() + 1;
+
+  await loadCalendar();
+  await loadTodayAppointments();
+}
+
+async function updateAppointmentStatus(appointment, newStatus) {
+  await apiFetch(`/patients/${appointment.patient_id}/appointments/${appointment.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      staff_id: appointment.staff_id,
+      date: appointment.date,
+      time: appointment.time,
+      reason: appointment.reason,
+      status: newStatus
+    })
+  });
+}
+
+function renderTodayAppointments(appointments) {
+  todayAppointments = appointments;
+
+  if (appointments.length === 0) {
+    appointmentsTbody.innerHTML = '<tr class="empty-row"><td colspan="6">해당 날짜에 예약이 없어요.</td></tr>';
+    return;
+  }
+
+  appointmentsTbody.innerHTML = appointments
+    .map(
+      (a) => `
+        <tr>
+          <td>${a.staff_name}</td>
+          <td class="mono">${a.time}</td>
+          <td class="row-click" data-open-patient="${a.patient_id}">${a.patient_name}</td>
+          <td>${a.reason || "-"}</td>
+          <td>
+            <select class="appt-status-select ${apptStatusClass(a.status)}" data-appt="${a.id}">
+              ${apptStatusOptions(a.status)}
+            </select>
+          </td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-delete-appt="${a.id}" title="삭제" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </td>
+        </tr>
+      `
+    )
+    .join("");
+
+  appointmentsTbody.querySelectorAll("[data-open-patient]").forEach((el) => {
+    el.addEventListener("click", () => openPatientChart(el.dataset.openPatient));
+  });
+
+  appointmentsTbody.querySelectorAll(".appt-status-select").forEach((sel) => {
+    sel.addEventListener("change", async () => {
+      const appt = todayAppointments.find((a) => String(a.id) === sel.dataset.appt);
+      sel.className = "appt-status-select " + apptStatusClass(sel.value);
+      await updateAppointmentStatus(appt, sel.value);
+      await loadTodayAppointments();
+    });
+  });
+
+  appointmentsTbody.querySelectorAll("[data-delete-appt]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const appt = todayAppointments.find((a) => String(a.id) === btn.dataset.deleteAppt);
+      await apiFetch(`/patients/${appt.patient_id}/appointments/${appt.id}`, { method: "DELETE" });
+      await loadTodayAppointments();
+    });
+  });
+}
+
+async function loadTodayAppointments() {
+  if (!apptDatePicker.value) {
+    apptDatePicker.value = new Date().toISOString().slice(0, 10);
+  }
+
+  const params = new URLSearchParams({ date: apptDatePicker.value });
+  const staffId = selectedApptStaffId();
+  if (staffId) params.set("staff_id", staffId);
+
+  const res = await apiFetch("/appointments?" + params.toString());
+  const data = await res.json();
+  renderTodayAppointments(data.appointments);
+}
+
+apptDatePicker.addEventListener("change", () => loadTodayAppointments());
 
 /* ---------------- 환자 차트 ---------------- */
 
@@ -549,10 +795,13 @@ async function openPatientChart(patientId) {
 
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById("cf-date").value = today;
+  document.getElementById("af-date").value = today;
   chartTodayLabel.textContent = "오늘의 요약 · " + today;
 
   showSubview("chart");
+  await loadDoctorList(document.getElementById("af-staff"));
   await loadPatientChart();
+  await loadPatientAppointments();
 }
 
 async function deleteRecord(id) {
@@ -593,6 +842,107 @@ chartRecordForm.addEventListener("submit", async (e) => {
     showMsg(chartRecordMsg, "기록이 저장됐어요.", "success");
   } catch (err) {
     showMsg(chartRecordMsg, err.message, "error");
+  }
+});
+
+/* ---------------- 환자 차트 내 예약 ---------------- */
+
+const apptForm = document.getElementById("appt-form");
+const apptMsg = document.getElementById("appt-msg");
+const apptStaffSelect = document.getElementById("af-staff");
+const chartAppointmentsTbody = document.getElementById("chart-appointments-tbody");
+
+let chartAppointments = [];
+
+function renderChartAppointments(appointments) {
+  chartAppointments = appointments;
+
+  if (appointments.length === 0) {
+    chartAppointmentsTbody.innerHTML = '<tr class="empty-row"><td colspan="6">예약된 일정이 없어요.</td></tr>';
+    return;
+  }
+
+  const sorted = [...appointments].sort((a, b) =>
+    a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)
+  );
+
+  chartAppointmentsTbody.innerHTML = sorted
+    .map((a) => {
+      const staffName = apptStaffSelect.querySelector(`option[value="${a.staff_id}"]`);
+      return `
+        <tr>
+          <td>${staffName ? staffName.textContent : a.staff_id}</td>
+          <td class="date-cell">${a.date}</td>
+          <td class="mono">${a.time}</td>
+          <td>${a.reason || "-"}</td>
+          <td>
+            <select class="appt-status-select ${apptStatusClass(a.status)}" data-appt="${a.id}">
+              ${apptStatusOptions(a.status)}
+            </select>
+          </td>
+          <td class="actions-cell">
+            <button class="icon-btn" data-delete-chart-appt="${a.id}" title="삭제" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  chartAppointmentsTbody.querySelectorAll(".appt-status-select").forEach((sel) => {
+    sel.addEventListener("change", async () => {
+      const appt = chartAppointments.find((a) => String(a.id) === sel.dataset.appt);
+      sel.className = "appt-status-select " + apptStatusClass(sel.value);
+      await updateAppointmentStatus(appt, sel.value);
+      await loadPatientAppointments();
+    });
+  });
+
+  chartAppointmentsTbody.querySelectorAll("[data-delete-chart-appt]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await apiFetch(`/patients/${currentPatient.id}/appointments/${btn.dataset.deleteChartAppt}`, {
+        method: "DELETE"
+      });
+      await loadPatientAppointments();
+    });
+  });
+}
+
+async function loadPatientAppointments() {
+  const res = await apiFetch(`/patients/${currentPatient.id}/appointments`);
+  const data = await res.json();
+  renderChartAppointments(data.appointments);
+}
+
+apptForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg(apptMsg);
+
+  const payload = {
+    staff_id: parseInt(document.getElementById("af-staff").value, 10),
+    date: document.getElementById("af-date").value,
+    time: document.getElementById("af-time").value,
+    reason: document.getElementById("af-reason").value
+  };
+
+  try {
+    const res = await apiFetch(`/patients/${currentPatient.id}/appointments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.detail ? JSON.stringify(body.detail) : "예약 등록에 실패했어요.");
+    }
+
+    document.getElementById("af-reason").value = "";
+    await loadPatientAppointments();
+    showMsg(apptMsg, "예약이 등록됐어요.", "success");
+  } catch (err) {
+    showMsg(apptMsg, err.message, "error");
   }
 });
 

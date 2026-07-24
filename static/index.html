@@ -54,6 +54,7 @@
         </div>
         <nav class="nav-tabs" id="nav-tabs">
           <button type="button" class="nav-tab is-active" data-view="patients">환자 관리</button>
+          <button type="button" class="nav-tab" data-view="appointments">오늘 예약</button>
           <button type="button" class="nav-tab" data-view="staff" id="nav-staff-tab" hidden>직원 관리</button>
         </nav>
         <div class="user-chip">
@@ -135,6 +136,58 @@
           <button type="button" id="patients-prev-btn">이전</button>
           <span class="mono" id="patients-page-label"></span>
           <button type="button" id="patients-next-btn">다음</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- 서브뷰: 오늘 예약 ---- -->
+    <div class="subview" id="sub-appointments">
+      <div class="panel" id="appt-filter-panel">
+        <div class="panel-head">
+          <h2>의사 선택</h2>
+        </div>
+        <div class="field" style="padding: 0 20px 18px;">
+          <select id="appt-doctor-filter">
+            <option value="">전체 (목록만 보기)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel" id="appt-calendar-panel" hidden>
+        <div class="panel-head">
+          <h2 id="appt-calendar-title">이번 달</h2>
+          <div class="cal-nav">
+            <button type="button" id="cal-prev-btn">◂</button>
+            <button type="button" id="cal-next-btn">▸</button>
+          </div>
+        </div>
+        <div class="cal-wrap">
+          <div class="cal-weekdays">
+            <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="appt-panel-title">예약 목록</h2>
+          <input type="date" id="appt-date-picker" />
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>담당</th>
+                <th>시간</th>
+                <th>환자</th>
+                <th>사유</th>
+                <th>상태</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="appointments-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -244,6 +297,47 @@
         </div>
         <div class="chart-wrap" id="chart-wrap-bp">
           <canvas id="chart-trend-bp" height="90"></canvas>
+        </div>
+      </div>
+
+      <div class="panel form-panel">
+        <div class="panel-head"><h2>예약</h2></div>
+        <div class="form-msg" id="appt-msg"></div>
+        <form class="form-grid" id="appt-form" style="padding: 4px 20px 20px;">
+          <div class="field">
+            <label for="af-date">날짜</label>
+            <input id="af-date" type="date" required />
+          </div>
+          <div class="field">
+            <label for="af-time">시간</label>
+            <input id="af-time" type="time" required />
+          </div>
+          <div class="field">
+            <label for="af-staff">담당</label>
+            <select id="af-staff" required></select>
+          </div>
+          <div class="field">
+            <label for="af-reason">사유</label>
+            <input id="af-reason" type="text" />
+          </div>
+          <div class="field full">
+            <button class="btn-primary btn-compact" type="submit">예약 등록</button>
+          </div>
+        </form>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>담당</th>
+                <th>날짜</th>
+                <th>시간</th>
+                <th>사유</th>
+                <th>상태</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="chart-appointments-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>

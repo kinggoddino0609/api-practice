@@ -43,8 +43,7 @@ def create_patient(db, name, phone, birth_date, gender):
         gender=gender
     )
     db.add(patient)
-    db.commit()
-    db.refresh(patient)
+    db.flush()  # id를 바로 써야 해서 flush만 하고, 실제 commit은 마지막에 한 번만
     return patient
 
 
@@ -75,7 +74,6 @@ def add_record(db, patient_id, staff_id, days_ago, weight, height, systolic, dia
         warnings=json.dumps(analysis["warnings"], ensure_ascii=False)
     )
     db.add(record)
-    db.commit()
 
 
 def random_name():
@@ -94,9 +92,12 @@ def random_birth_date():
 
 
 def create_bulk_patients(db, staff_ids, count):
+    patient_ids = []
+
     for _ in range(count):
         patient = create_patient(db, random_name(), random_phone(), random_birth_date(),
                                   random.choice(["M", "F"]))
+        patient_ids.append(patient.id)
 
         if random.random() >= 0.7:
             continue  # 30%는 등록만 하고 진료 기록 없음 (실제 병원처럼)
@@ -118,6 +119,51 @@ def create_bulk_patients(db, staff_ids, count):
                 sleep_hours=round(random.uniform(4.5, 8.5), 1)
             )
 
+    return patient_ids
+
+
+APPOINTMENT_REASONS = [
+    "정기 검진", "혈압 재검", "혈당 관리 상담", "체중 관리 상담",
+    "예방접종", "건강검진 결과 상담", "약 처방 재방문", ""
+]
+
+
+def create_daily_appointments(db, patient_ids, doctor_ids, day_range=(-30, 30), per_doctor_per_day=(5, 10)):
+    """환자 수와 무관하게, 의사 한 명당 하루 예약 수를 직접 타겟팅해서 생성한다."""
+    for offset_days in range(day_range[0], day_range[1] + 1):
+        appt_date = date.today() + timedelta(days=offset_days)
+
+        if appt_date.weekday() == 6:  # 일요일은 병원 휴진
+            continue
+
+        if offset_days < 0:
+            status_pool, weights = ["완료", "취소"], [85, 15]
+        elif offset_days == 0:
+            status_pool, weights = ["예정", "완료", "취소"], [60, 30, 10]
+        else:
+            status_pool, weights = ["예정", "취소"], [90, 10]
+
+        for doctor_id in doctor_ids:
+            if random.random() < 0.2:
+                continue  # 이 날은 쉬는 날 (예약 없음)
+
+            daily_count = random.randint(*per_doctor_per_day)
+            chosen_patients = random.sample(patient_ids, min(daily_count, len(patient_ids)))
+
+            for patient_id in chosen_patients:
+                hour = random.choice([9, 10, 11, 13, 14, 15, 16, 17])
+                minute = random.choice([0, 10, 20, 30, 40, 50])
+
+                appointment = models.Appointment(
+                    patient_id=patient_id,
+                    staff_id=doctor_id,
+                    date=appt_date.isoformat(),
+                    time=f"{hour:02d}:{minute:02d}",
+                    reason=random.choice(APPOINTMENT_REASONS),
+                    status=random.choices(status_pool, weights=weights)[0]
+                )
+                db.add(appointment)
+
 
 def main():
     Base.metadata.create_all(bind=engine)
@@ -128,8 +174,25 @@ def main():
         db.close()
         return
 
-    nurse = get_or_create_staff(db, "nurse1@example.com", "nurse1234", "김간호", "nurse")
-    doctor = get_or_create_staff(db, "doctor1@example.com", "doctor1234", "박의사", "doctor")
+    admin = get_or_create_staff(db, "admin@dino.com", "admin1234", "양종석", "admin")
+
+    doctor_names = ["이서원", "김동환", "윤준성", "전구성", "강승원"]
+    doctors = [
+        get_or_create_staff(db, f"doctor{i + 1}@dino.com", "doctor1234", name, "doctor")
+        for i, name in enumerate(doctor_names)
+    ]
+
+    nurse_names = ["권보람", "이연주", "강다희", "황미르", "이태웅", "강예람", "한승우", "이해랑", "선범수"]
+    nurses = [
+        get_or_create_staff(db, f"nurse{i + 1}@dino.com", "nurse1234", name, "nurse")
+        for i, name in enumerate(nurse_names)
+    ]
+
+    nurse = nurses[0]
+    doctor = doctors[0]
+
+    all_staff_ids = [admin.id] + [d.id for d in doctors] + [n.id for n in nurses]
+    doctor_ids = [admin.id] + [d.id for d in doctors]
 
     # 1. 홍길동 - 고혈압 악화 추세
     p1 = create_patient(db, "홍길동", "010-1234-5678", "1975-03-15", "M")
@@ -167,18 +230,24 @@ def main():
     add_record(db, p6.id, nurse.id, 0, 58, 160, 105, 68, 80, steps=6000, sleep_hours=7.0, memo="첫 방문")
 
     # 7. 강태양 - 등록만 하고 진료 기록 없음 (빈 상태 케이스)
-    create_patient(db, "강태양", "010-3333-4444", "1992-12-25", "M")
+    p7 = create_patient(db, "강태양", "010-3333-4444", "1992-12-25", "M")
 
-    # 8~100. 나머지는 랜덤 생성 (페이지네이션 테스트용 물량)
+    curated_ids = [p1.id, p2.id, p3.id, p4.id, p5.id, p6.id, p7.id]
+
+    # 8~3000. 나머지는 랜덤 생성 (원장 대시보드 통계용 물량)
     random.seed(42)
-    create_bulk_patients(db, [nurse.id, doctor.id], count=93)
+    bulk_ids = create_bulk_patients(db, all_staff_ids, count=2993)
 
+    all_patient_ids = curated_ids + bulk_ids
+    create_daily_appointments(db, all_patient_ids, doctor_ids)
+
+    db.commit()  # 지금까지 flush만 해둔 것들 한 번에 커밋
     db.close()
 
-    print("더미 데이터 생성 완료! (환자 100명)")
-    print("추가 로그인 계정 (일반 직원):")
-    print("  nurse1@example.com  / nurse1234")
-    print("  doctor1@example.com / doctor1234")
+    print("더미 데이터 생성 완료! (환자 3000명, 의사당 하루 5~10건 예약, ±30일)")
+    print("원장: admin@dino.com / admin1234")
+    print("의사: doctor1~5@dino.com / doctor1234")
+    print("간호사: nurse1~9@dino.com / nurse1234")
 
 
 if __name__ == "__main__":
