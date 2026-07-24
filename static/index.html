@@ -56,6 +56,7 @@
           <button type="button" class="nav-tab is-active" data-view="patients">환자 관리</button>
           <button type="button" class="nav-tab" data-view="appointments">오늘 예약</button>
           <button type="button" class="nav-tab" data-view="staff" id="nav-staff-tab" hidden>직원 관리</button>
+          <button type="button" class="nav-tab" data-view="stats" id="nav-stats-tab" hidden>병원 통계</button>
         </nav>
         <div class="user-chip">
           <span id="current-name"></span>
@@ -387,6 +388,40 @@
               </tr>
             </thead>
             <tbody id="staff-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- 서브뷰: 병원 통계 (admin 전용) ---- -->
+    <div class="subview" id="sub-stats">
+      <p class="eyebrow">병원 현황 · 이번 달</p>
+      <div class="stat-row" id="hospital-stat-row"></div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>위험군 현황 (최신 기록 기준)</h2></div>
+        <div class="stat-row" id="risk-stat-row" style="padding: 0 20px 20px;"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>최근 14일 진료 추이</h2></div>
+        <div class="chart-wrap" id="visits-trend-wrap">
+          <canvas id="visits-trend-chart" height="90"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>의사별 이번달 진료 순위</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>의사</th>
+                <th class="num">진료 건수</th>
+              </tr>
+            </thead>
+            <tbody id="top-doctors-tbody"></tbody>
           </table>
         </div>
       </div>

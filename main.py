@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import date as Date
+from datetime import timedelta
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -776,4 +777,97 @@ def get_appointments_summary(
 
     return {
         "counts": {day: count for day, count in rows}
+    }
+
+
+@app.get("/stats/hospital")
+def get_hospital_stats(
+    db: Session = Depends(get_db),
+    current_admin: models.Staff = Depends(auth.get_current_admin)
+):
+    today = Date.today()
+    month_prefix = today.strftime("%Y-%m")
+
+    total_patients = db.query(models.Patient).count()
+
+    staff_rows = (
+        db.query(models.Staff.role, func.count(models.Staff.id))
+        .group_by(models.Staff.role)
+        .all()
+    )
+    staff_counts = {role: count for role, count in staff_rows}
+
+    visits_this_month = (
+        db.query(models.Record)
+        .filter(models.Record.date.like(f"{month_prefix}%"))
+        .count()
+    )
+
+    appointments_this_month = (
+        db.query(models.Appointment)
+        .filter(models.Appointment.date.like(f"{month_prefix}%"))
+        .count()
+    )
+
+    appointments_today = (
+        db.query(models.Appointment)
+        .filter(models.Appointment.date == today.isoformat())
+        .count()
+    )
+
+    # 환자별 최신 기록만 뽑아서 위험군 집계
+    latest_dates = (
+        db.query(
+            models.Record.patient_id,
+            func.max(models.Record.date).label("max_date")
+        )
+        .group_by(models.Record.patient_id)
+        .subquery()
+    )
+
+    latest_records = (
+        db.query(models.Record)
+        .join(
+            latest_dates,
+            (models.Record.patient_id == latest_dates.c.patient_id)
+            & (models.Record.date == latest_dates.c.max_date)
+        )
+        .all()
+    )
+
+    risk_breakdown = {
+        "obesity": sum(1 for r in latest_records if r.bmi_category == "비만"),
+        "hypertension": sum(1 for r in latest_records if r.bp_category == "고혈압"),
+        "diabetes_risk": sum(1 for r in latest_records if r.sugar_category == "당뇨 의심")
+    }
+
+    start_date = (today - timedelta(days=13)).isoformat()
+    daily_rows = (
+        db.query(models.Record.date, func.count(models.Record.id))
+        .filter(models.Record.date >= start_date)
+        .group_by(models.Record.date)
+        .all()
+    )
+    daily_visits = {day: count for day, count in daily_rows}
+
+    top_doctor_rows = (
+        db.query(models.Staff.name, func.count(models.Record.id).label("cnt"))
+        .join(models.Record, models.Record.recorded_by == models.Staff.id)
+        .filter(models.Record.date.like(f"{month_prefix}%"))
+        .filter(models.Staff.role.in_(["doctor", "admin"]))
+        .group_by(models.Staff.id)
+        .order_by(func.count(models.Record.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "total_patients": total_patients,
+        "staff_counts": staff_counts,
+        "visits_this_month": visits_this_month,
+        "appointments_this_month": appointments_this_month,
+        "appointments_today": appointments_today,
+        "risk_breakdown": risk_breakdown,
+        "daily_visits": daily_visits,
+        "top_doctors_this_month": [{"name": name, "visits": cnt} for name, cnt in top_doctor_rows]
     }

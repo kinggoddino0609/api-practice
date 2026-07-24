@@ -116,6 +116,7 @@ document.getElementById("nav-tabs").addEventListener("click", (e) => {
   if (view === "patients") loadAllPatients();
   if (view === "staff") loadStaffList();
   if (view === "appointments") initAppointmentsTab();
+  if (view === "stats") initStatsTab();
 });
 
 async function enterApp() {
@@ -131,6 +132,7 @@ async function enterApp() {
   document.documentElement.dataset.role = currentStaff.role;
 
   navStaffTab.hidden = currentStaff.role !== "admin";
+  document.getElementById("nav-stats-tab").hidden = currentStaff.role !== "admin";
   apptPanelTitle.textContent =
     currentStaff.role === "doctor" ? `${currentStaff.name}님의 예약 목록` : "전체 예약 목록";
 
@@ -1021,6 +1023,105 @@ staffCreateForm.addEventListener("submit", async (e) => {
     showMsg(staffCreateMsg, err.message, "error");
   }
 });
+
+/* ---------------- 병원 통계 (admin) ---------------- */
+
+async function initStatsTab() {
+  const res = await apiFetch("/stats/hospital");
+  const data = await res.json();
+  renderHospitalStats(data);
+}
+
+function renderHospitalStats(data) {
+  const staffTotal = Object.values(data.staff_counts).reduce((sum, n) => sum + n, 0);
+  const staffBreakdown = Object.entries(data.staff_counts)
+    .map(([role, n]) => `${ROLE_LABEL[role] || role} ${n}`)
+    .join(" · ");
+
+  document.getElementById("hospital-stat-row").innerHTML = `
+    <div class="stat-card">
+      <div class="label">전체 환자 수</div>
+      <div class="value mono">${data.total_patients}<span class="unit">명</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">전체 직원 수</div>
+      <div class="value mono">${staffTotal}<span class="unit">명</span></div>
+      <span class="chip good">${staffBreakdown}</span>
+    </div>
+    <div class="stat-card">
+      <div class="label">이번달 진료 건수</div>
+      <div class="value mono">${data.visits_this_month}<span class="unit">건</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">예약 (이번달 / 오늘)</div>
+      <div class="value mono">${data.appointments_this_month}<span class="unit">건 / ${data.appointments_today}건</span></div>
+    </div>
+  `;
+
+  document.getElementById("risk-stat-row").innerHTML = `
+    <div class="stat-card">
+      <div class="label">비만</div>
+      <div class="value mono">${data.risk_breakdown.obesity}<span class="unit">명</span></div>
+      <span class="chip crit">비만</span>
+    </div>
+    <div class="stat-card">
+      <div class="label">고혈압</div>
+      <div class="value mono">${data.risk_breakdown.hypertension}<span class="unit">명</span></div>
+      <span class="chip crit">고혈압</span>
+    </div>
+    <div class="stat-card">
+      <div class="label">당뇨 의심</div>
+      <div class="value mono">${data.risk_breakdown.diabetes_risk}<span class="unit">명</span></div>
+      <span class="chip crit">당뇨 의심</span>
+    </div>
+  `;
+
+  drawVisitsTrend(data.daily_visits);
+  renderTopDoctors(data.top_doctors_this_month);
+}
+
+function drawVisitsTrend(dailyVisits) {
+  const dates = Object.keys(dailyVisits).sort();
+  const wrap = document.getElementById("visits-trend-wrap");
+
+  if (dates.length === 0) {
+    wrap.innerHTML = '<div class="chart-empty">최근 진료 기록이 없어요.</div>';
+    return;
+  }
+
+  if (!document.getElementById("visits-trend-chart")) {
+    wrap.innerHTML = '<canvas id="visits-trend-chart" height="90"></canvas>';
+  }
+
+  const data = dates.map((d) => dailyVisits[d]);
+  const styles = getComputedStyle(document.documentElement);
+  const accent = styles.getPropertyValue("--accent").trim();
+
+  renderLineChart(document.getElementById("visits-trend-chart"), [
+    { data, color: accent, fill: true }
+  ]);
+}
+
+function renderTopDoctors(list) {
+  const tbody = document.getElementById("top-doctors-tbody");
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">이번달 진료 기록이 없어요.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list
+    .map(
+      (d, i) => `
+        <tr>
+          <td class="mono">${i + 1}</td>
+          <td>${d.name}</td>
+          <td class="num mono">${d.visits}</td>
+        </tr>
+      `
+    )
+    .join("");
+}
 
 /* ---------------- 시작 ---------------- */
 
