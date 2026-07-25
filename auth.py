@@ -20,12 +20,71 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
+CHOSEONG = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ",
+            "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+JUNGSEONG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅘ",
+             "ㅙ", "ㅚ", "ㅛ", "ㅜ", "ㅝ", "ㅞ", "ㅟ", "ㅠ", "ㅡ", "ㅢ", "ㅣ"]
+JONGSEONG = ["", "ㄱ", "ㄲ", "ㄳ", "ㄴ", "ㄵ", "ㄶ", "ㄷ", "ㄹ", "ㄺ",
+             "ㄻ", "ㄼ", "ㄽ", "ㄾ", "ㄿ", "ㅀ", "ㅁ", "ㅂ", "ㅄ", "ㅅ",
+             "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+
+# 2벌식 자판에서 각 자모를 입력할 때 눌러야 하는 영문 키
+JAMO_TO_QWERTY_KEY = {
+    "ㄱ": "r", "ㄲ": "R", "ㄴ": "s", "ㄷ": "e", "ㄸ": "E", "ㄹ": "f", "ㅁ": "a",
+    "ㅂ": "q", "ㅃ": "Q", "ㅅ": "t", "ㅆ": "T", "ㅇ": "d", "ㅈ": "w", "ㅉ": "W",
+    "ㅊ": "c", "ㅋ": "z", "ㅌ": "x", "ㅍ": "v", "ㅎ": "g",
+    "ㅏ": "k", "ㅐ": "o", "ㅑ": "i", "ㅒ": "O", "ㅓ": "j", "ㅔ": "p", "ㅕ": "u",
+    "ㅖ": "P", "ㅗ": "h", "ㅛ": "y", "ㅜ": "n", "ㅠ": "b", "ㅡ": "m", "ㅣ": "l",
+    "ㅘ": "hk", "ㅙ": "ho", "ㅚ": "hl", "ㅝ": "nj", "ㅞ": "np", "ㅟ": "nl", "ㅢ": "ml",
+    "ㄳ": "rt", "ㄵ": "sw", "ㄶ": "sg", "ㄺ": "fr", "ㄻ": "fa", "ㄼ": "fq",
+    "ㄽ": "ft", "ㄾ": "fx", "ㄿ": "fv", "ㅀ": "fg", "ㅄ": "qt"
+}
+
+
+def hangul_to_qwerty(text: str) -> str:
+    """한글을 2벌식 자판으로 쳤을 때 나오는 영문 키 입력값으로 변환한다 (한/영 전환을 깜빡했을 때 대비)."""
+    result = []
+
+    for char in text:
+        code = ord(char) - 0xAC00
+
+        if 0 <= code <= 11171:
+            cho = CHOSEONG[code // (21 * 28)]
+            jung = JUNGSEONG[(code % (21 * 28)) // 28]
+            jong = JONGSEONG[code % 28]
+            result.append(JAMO_TO_QWERTY_KEY[cho])
+            result.append(JAMO_TO_QWERTY_KEY[jung])
+            if jong:
+                result.append(JAMO_TO_QWERTY_KEY[jong])
+        else:
+            result.append(char)
+
+    return "".join(result)
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+def hash_password_variants(password: str) -> tuple[str, str | None]:
+    """비밀번호와, 한/영 전환을 깜빡하고 쳤을 때의 대체 입력값을 함께 해싱해 반환한다."""
+    primary = hash_password(password)
+    alt_plain = hangul_to_qwerty(password)
+
+    if alt_plain == password:
+        return primary, None
+
+    return primary, hash_password(alt_plain)
+
+
+def verify_password(password: str, hashed_password: str, hashed_password_alt: str | None = None) -> bool:
+    if bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8")):
+        return True
+
+    if hashed_password_alt:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed_password_alt.encode("utf-8"))
+
+    return False
 
 
 def create_access_token(email: str) -> str:

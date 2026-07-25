@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -39,9 +39,12 @@ def bootstrap_admin():
         if not admin_email or not admin_password:
             return
 
+        primary_hash, alt_hash = auth.hash_password_variants(admin_password)
+
         admin = models.Staff(
             email=admin_email,
-            hashed_password=auth.hash_password(admin_password),
+            hashed_password=primary_hash,
+            hashed_password_alt=alt_hash,
             name=os.environ.get("ADMIN_NAME", "관리자"),
             role="admin"
         )
@@ -55,8 +58,8 @@ bootstrap_admin()
 
 
 class StaffCreate(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8)
+    email: str = Field(min_length=1)
+    password: str = Field(min_length=6)
     name: str
     role: Literal["admin", "doctor", "nurse"]
 
@@ -245,10 +248,12 @@ def read_root():
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     staff = db.query(models.Staff).filter(models.Staff.email == form_data.username).first()
 
-    if not staff or not auth.verify_password(form_data.password, staff.hashed_password):
+    if not staff or not auth.verify_password(
+        form_data.password, staff.hashed_password, staff.hashed_password_alt
+    ):
         raise HTTPException(
             status_code=401,
-            detail="이메일 또는 비밀번호가 올바르지 않습니다.",
+            detail="아이디 또는 비밀번호가 올바르지 않습니다.",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
@@ -273,12 +278,15 @@ def create_staff(
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="이미 등록된 이메일입니다."
+            detail="이미 등록된 아이디입니다."
         )
+
+    primary_hash, alt_hash = auth.hash_password_variants(staff.password)
 
     new_staff = models.Staff(
         email=staff.email,
-        hashed_password=auth.hash_password(staff.password),
+        hashed_password=primary_hash,
+        hashed_password_alt=alt_hash,
         name=staff.name,
         role=staff.role
     )

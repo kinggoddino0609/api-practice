@@ -9,6 +9,7 @@ class Staff(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    hashed_password_alt = Column(String, nullable=True)
     name = Column(String, nullable=False)
     role = Column(String, nullable=False)  # "admin" | "doctor" | "nurse"
 

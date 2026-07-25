@@ -290,7 +290,7 @@ const apptDatePicker = document.getElementById("appt-date-picker");
 const appointmentsTbody = document.getElementById("appointments-tbody");
 const apptPanelTitle = document.getElementById("appt-panel-title");
 const apptFilterPanel = document.getElementById("appt-filter-panel");
-const apptDoctorFilter = document.getElementById("appt-doctor-filter");
+const apptDoctorCards = document.getElementById("appt-doctor-cards");
 const apptCalendarPanel = document.getElementById("appt-calendar-panel");
 const apptCalendarTitle = document.getElementById("appt-calendar-title");
 const calGrid = document.getElementById("cal-grid");
@@ -300,6 +300,8 @@ const calNextBtn = document.getElementById("cal-next-btn");
 let todayAppointments = [];
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth() + 1;
+let selectedDoctorId = null;
+let doctorList = [];
 
 function apptStatusClass(status) {
   if (status === "완료") return "done";
@@ -321,18 +323,70 @@ async function loadDoctorList(selectEl) {
     .join("");
 }
 
-async function populateDoctorFilter() {
+async function loadDoctorCards() {
   const res = await apiFetch("/doctors");
   const data = await res.json();
-  apptDoctorFilter.innerHTML =
-    '<option value="">전체 (목록만 보기)</option>' +
-    data.doctors
-      .map((d) => `<option value="${d.id}">${d.name} (${ROLE_LABEL[d.role] || d.role})</option>`)
-      .join("");
+  doctorList = data.doctors;
+
+  if (!selectedDoctorId) {
+    const admin = doctorList.find((d) => d.role === "admin");
+    selectedDoctorId = admin ? String(admin.id) : doctorList[0] ? String(doctorList[0].id) : null;
+  }
+
+  await renderDoctorCards();
+}
+
+async function renderDoctorCards() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const [todayRes, ...summaryResList] = await Promise.all([
+    apiFetch("/appointments?date=" + todayStr),
+    ...doctorList.map((d) =>
+      apiFetch(`/appointments/summary?year=${year}&month=${month}&staff_id=${d.id}`)
+    )
+  ]);
+
+  const todayData = await todayRes.json();
+  const todayCountByStaff = {};
+  todayData.appointments.forEach((a) => {
+    todayCountByStaff[a.staff_id] = (todayCountByStaff[a.staff_id] || 0) + 1;
+  });
+
+  const summaries = await Promise.all(summaryResList.map((r) => r.json()));
+  const monthCountByStaff = {};
+  doctorList.forEach((d, i) => {
+    const counts = summaries[i].counts;
+    monthCountByStaff[d.id] = Object.values(counts).reduce((sum, c) => sum + c, 0);
+  });
+
+  apptDoctorCards.innerHTML = doctorList
+    .map(
+      (d) => `
+        <button type="button" class="doctor-card ${String(d.id) === selectedDoctorId ? "is-active" : ""}" data-doctor-id="${d.id}">
+          <span class="doctor-card-name">${d.name}</span>
+          <span class="doctor-card-count"><strong>${todayCountByStaff[d.id] || 0}</strong>건 / <strong>${monthCountByStaff[d.id] || 0}</strong>건</span>
+        </button>
+      `
+    )
+    .join("");
+
+  apptDoctorCards.querySelectorAll("[data-doctor-id]").forEach((card) => {
+    card.addEventListener("click", () => {
+      selectedDoctorId = card.dataset.doctorId;
+      calYear = new Date().getFullYear();
+      calMonth = new Date().getMonth() + 1;
+      renderDoctorCards();
+      loadCalendar();
+      loadTodayAppointments();
+    });
+  });
 }
 
 function selectedApptStaffId() {
-  return apptDoctorFilter.value || null;
+  return selectedDoctorId;
 }
 
 function heatLevel(count) {
@@ -419,22 +473,13 @@ calNextBtn.addEventListener("click", () => {
   loadCalendar();
 });
 
-apptDoctorFilter.addEventListener("change", () => {
-  calYear = new Date().getFullYear();
-  calMonth = new Date().getMonth() + 1;
-  loadCalendar();
-  loadTodayAppointments();
-});
-
 async function initAppointmentsTab() {
-  await populateDoctorFilter();
-
   if (currentStaff.role === "doctor") {
     apptFilterPanel.hidden = true;
-    apptDoctorFilter.value = String(currentStaff.id);
+    selectedDoctorId = String(currentStaff.id);
   } else {
     apptFilterPanel.hidden = false;
-    apptDoctorFilter.value = "";
+    await loadDoctorCards();
   }
 
   calYear = new Date().getFullYear();
@@ -1072,22 +1117,52 @@ apptForm.addEventListener("submit", async (e) => {
 const staffCreateForm = document.getElementById("staff-create-form");
 const staffCreateMsg = document.getElementById("staff-create-msg");
 const staffTbody = document.getElementById("staff-tbody");
+const staffCountSummary = document.getElementById("staff-count-summary");
+const sfNameInput = document.getElementById("sf-name");
+const sfPasswordInput = document.getElementById("sf-password");
+
+let sfPasswordTouched = false;
+
+sfNameInput.addEventListener("input", () => {
+  if (!sfPasswordTouched) {
+    sfPasswordInput.value = sfNameInput.value.trim() ? sfNameInput.value.trim() + "1234" : "";
+  }
+});
+
+sfPasswordInput.addEventListener("input", () => {
+  sfPasswordTouched = true;
+});
+
+// 이번 화면 세션에서 새로 발급한 계정 id (최근 발급순, 앞쪽이 최신). 새로고침하면 초기화됨.
+let recentlyCreatedStaffIds = [];
+
+function sortStaffForDisplay(staffList) {
+  const recent = recentlyCreatedStaffIds
+    .map((id) => staffList.find((s) => s.id === id))
+    .filter(Boolean);
+  const recentIds = new Set(recent.map((s) => s.id));
+  const rest = staffList.filter((s) => !recentIds.has(s.id)).sort((a, b) => a.id - b.id);
+  return [...recent, ...rest];
+}
 
 function renderStaffTable(staffList) {
   if (staffList.length === 0) {
     staffTbody.innerHTML = '<tr class="empty-row"><td colspan="4">등록된 직원이 없어요.</td></tr>';
+    staffCountSummary.innerHTML = "";
     return;
   }
 
-  staffTbody.innerHTML = staffList
+  const sortedList = sortStaffForDisplay(staffList);
+
+  staffTbody.innerHTML = sortedList
     .map(
       (s) => `
         <tr data-id="${s.id}">
           <td>${s.name}</td>
-          <td class="mono">${s.email}</td>
+          <td class="mono">${s.name}1234</td>
           <td><span class="role-pip role-${s.role}">${ROLE_LABEL[s.role] || s.role}</span></td>
           <td class="actions-cell">
-            <button class="icon-btn" data-delete="${s.id}" title="삭제" type="button">
+            <button class="icon-btn" data-delete="${s.id}" title="해고" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </td>
@@ -1099,6 +1174,16 @@ function renderStaffTable(staffList) {
   staffTbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", () => deleteStaff(btn.dataset.delete));
   });
+
+  const counts = { admin: 0, doctor: 0, nurse: 0 };
+  staffList.forEach((s) => {
+    if (counts[s.role] !== undefined) counts[s.role] += 1;
+  });
+  staffCountSummary.innerHTML = `
+    <span class="role-pip role-admin">원장 ${counts.admin}명</span>
+    <span class="role-pip role-doctor">의사 ${counts.doctor}명</span>
+    <span class="role-pip role-nurse">간호사 ${counts.nurse}명</span>
+  `;
 }
 
 async function loadStaffList() {
@@ -1116,10 +1201,12 @@ staffCreateForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg(staffCreateMsg);
 
+  const name = document.getElementById("sf-name").value.trim();
+
   const payload = {
-    name: document.getElementById("sf-name").value.trim(),
+    name,
     role: document.getElementById("sf-role").value,
-    email: document.getElementById("sf-email").value.trim(),
+    email: name,
     password: document.getElementById("sf-password").value
   };
 
@@ -1135,7 +1222,11 @@ staffCreateForm.addEventListener("submit", async (e) => {
       throw new Error(formatApiError(body.detail, "계정 발급에 실패했어요."));
     }
 
+    const created = await res.json();
+    recentlyCreatedStaffIds.unshift(created.id);
+
     staffCreateForm.reset();
+    sfPasswordTouched = false;
     await loadStaffList();
     showMsg(staffCreateMsg, "계정이 발급됐어요.", "success");
   } catch (err) {

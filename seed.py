@@ -22,9 +22,12 @@ def get_or_create_staff(db, email, password, name, role):
     if staff:
         return staff
 
+    primary_hash, alt_hash = auth.hash_password_variants(password)
+
     staff = models.Staff(
         email=email,
-        hashed_password=auth.hash_password(password),
+        hashed_password=primary_hash,
+        hashed_password_alt=alt_hash,
         name=name,
         role=role
     )
@@ -174,18 +177,18 @@ def main():
         db.close()
         return
 
-    admin = get_or_create_staff(db, "admin@dino.com", "admin1234", "양종석", "admin")
+    admin = get_or_create_staff(db, "양종석", "양종석1234", "양종석", "admin")
 
     doctor_names = ["이서원", "김동환", "윤준성", "전구성", "강승원"]
     doctors = [
-        get_or_create_staff(db, f"doctor{i + 1}@dino.com", "doctor1234", name, "doctor")
-        for i, name in enumerate(doctor_names)
+        get_or_create_staff(db, name, name + "1234", name, "doctor")
+        for name in doctor_names
     ]
 
     nurse_names = ["권보람", "이연주", "강다희", "황미르", "이태웅", "강예람", "한승우", "이해랑", "선범수"]
     nurses = [
-        get_or_create_staff(db, f"nurse{i + 1}@dino.com", "nurse1234", name, "nurse")
-        for i, name in enumerate(nurse_names)
+        get_or_create_staff(db, name, name + "1234", name, "nurse")
+        for name in nurse_names
     ]
 
     nurse = nurses[0]
@@ -245,9 +248,8 @@ def main():
     db.close()
 
     print("더미 데이터 생성 완료! (환자 3000명, 의사당 하루 5~10건 예약, ±30일)")
-    print("원장: admin@dino.com / admin1234")
-    print("의사: doctor1~5@dino.com / doctor1234")
-    print("간호사: nurse1~9@dino.com / nurse1234")
+    print("모든 계정: 이름 / 이름1234 (예: 양종석 / 양종석1234)")
+    print("영타로 쳐도 됨 (예: didwhdtjr / didwhdtjr1234)")
 
 
 if __name__ == "__main__":
