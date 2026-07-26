@@ -34,6 +34,31 @@
         <p class="login-foot">⚠️ 계정이 없다면 관리자에게 발급을 요청하세요</p>
       </form>
     </div>
+
+    <div class="test-accounts-panel">
+      <p class="test-accounts-title">테스트 계정</p>
+      <div class="test-account-item">
+        <span class="role-pip role-admin">원장</span>
+        <div class="test-account-lines">
+          <span>이름 : 양종석</span>
+          <span>비번 : 양종석1234</span>
+        </div>
+      </div>
+      <div class="test-account-item">
+        <span class="role-pip role-doctor">의사</span>
+        <div class="test-account-lines">
+          <span>이름 : 김동환</span>
+          <span>비번 : 김동환1234</span>
+        </div>
+      </div>
+      <div class="test-account-item">
+        <span class="role-pip role-nurse">간호사</span>
+        <div class="test-account-lines">
+          <span>이름 : 권보람</span>
+          <span>비번 : 권보람1234</span>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -69,7 +94,10 @@
     <!-- ---- 서브뷰: 환자 검색/목록 ---- -->
     <div class="subview is-active" id="sub-patients">
       <div class="panel">
-        <div class="panel-head"><h2>환자 조회</h2></div>
+        <div class="panel-head">
+          <h2>환자 조회</h2>
+          <button type="button" class="btn-primary btn-compact" id="open-patient-register-btn">신규 환자 등록</button>
+        </div>
         <div class="form-msg" id="patient-search-msg"></div>
         <form class="search-bar" id="patient-search-form">
           <div class="field">
@@ -253,25 +281,51 @@
         <div class="stat-panel-wrap">
           <p class="eyebrow" id="chart-today-label">오늘의 요약</p>
           <div class="stat-col" id="chart-stat-row"></div>
-          <p class="normal-range-note" id="normal-range-note"></p>
+          <div class="range-ref">
+            <div class="range-ref-top">
+              <div class="range-ref-col">
+                <span class="range-ref-label">BMI</span>
+                <div class="range-ref-item"><span class="range-ref-range">18.5 미만</span><span class="chip warn">저체중</span></div>
+                <div class="range-ref-item"><span class="range-ref-range">18.5~22.9</span><span class="chip good">정상</span></div>
+                <div class="range-ref-item"><span class="range-ref-range">23~24.9</span><span class="chip warn">과체중</span></div>
+                <div class="range-ref-item"><span class="range-ref-range">25 이상</span><span class="chip crit">비만</span></div>
+              </div>
+              <div class="range-ref-col">
+                <span class="range-ref-label">공복혈당</span>
+                <div class="range-ref-item"><span class="range-ref-range">100 미만</span><span class="chip good">정상</span></div>
+                <div class="range-ref-item"><span class="range-ref-range">100~125</span><span class="chip warn">공복혈당장애</span></div>
+                <div class="range-ref-item"><span class="range-ref-range">126 이상</span><span class="chip crit">당뇨 의심</span></div>
+              </div>
+            </div>
+            <div class="range-ref-bp">
+              <span class="range-ref-label">혈압</span>
+              <div class="range-ref-item"><span class="range-ref-range">수축기 120 미만 · 이완기 80 미만</span><span class="chip good">정상</span></div>
+              <div class="range-ref-item"><span class="range-ref-range">수축기 120~139 · 이완기 80~89</span><span class="chip warn">주의</span></div>
+              <div class="range-ref-item"><span class="range-ref-range">수축기 140 이상 · 이완기 90 이상</span><span class="chip crit">고혈압</span></div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="panel">
         <div class="panel-head" style="padding-bottom: 14px;">
           <h2>진료 기록</h2>
+          <div class="pagination" id="chart-records-pagination">
+            <button type="button" id="chart-records-prev-btn">이전</button>
+            <span class="mono" id="chart-records-page-label"></span>
+            <button type="button" id="chart-records-next-btn">다음</button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>날짜</th>
-                <th class="num">체중</th>
-                <th class="num">BMI</th>
-                <th class="num">혈압</th>
-                <th class="num">혈당</th>
-                <th></th>
-                <th></th>
+                <th>BMI</th>
+                <th>혈압</th>
+                <th>공복혈당</th>
+                <th>소견/메모</th>
+                <th>수정/삭제</th>
               </tr>
             </thead>
             <tbody id="chart-records-tbody"></tbody>
@@ -280,19 +334,20 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head">
+        <div class="panel-head trend-panel-head">
           <div class="trend-tabs" id="trend-tabs">
             <button type="button" class="trend-tab is-active" data-metric="bmi">BMI</button>
             <button type="button" class="trend-tab" data-metric="bp">혈압</button>
             <button type="button" class="trend-tab" data-metric="sugar">혈당</button>
           </div>
+          <button type="button" class="trend-band-toggle" id="trend-band-toggle">정상/주의/위험 구간</button>
           <div class="chart-legend" id="trend-bp-legend" hidden>
             <span class="legend-item"><i style="background: var(--ink-400);"></i>수축기</span>
             <span class="legend-item"><i style="background: var(--ink-400); opacity: 0.5;"></i>이완기(점선)</span>
           </div>
         </div>
         <div class="chart-wrap" id="chart-wrap-trend">
-          <canvas id="chart-trend-canvas" height="120"></canvas>
+          <canvas id="chart-trend-canvas" height="115"></canvas>
         </div>
       </div>
 
@@ -424,6 +479,8 @@
     </div>
   </div>
 </section>
+
+<div class="memo-popover" id="memo-popover" hidden></div>
 
 <script src="app.js"></script>
 </body>

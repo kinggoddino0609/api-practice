@@ -16,6 +16,14 @@ SURNAMES = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임"
 GIVEN_FIRST = ["민", "서", "도", "지", "하", "유", "준", "현", "수", "은", "재", "선", "우", "시", "연"]
 GIVEN_SECOND = ["준", "연", "우", "윤", "진", "호", "아", "빈", "율", "경", "훈", "영", "은", "서", "현"]
 
+MEMO_POOL = [
+    "특이사항 없음.",
+    "경과 관찰 필요.",
+    "약 복용 안내함.",
+    "다음 정기검진 권장.",
+    "생활습관 개선 상담 진행.",
+]
+
 
 def get_or_create_staff(db, email, password, name, role):
     staff = db.query(models.Staff).filter(models.Staff.email == email).first()
@@ -102,16 +110,14 @@ def create_bulk_patients(db, staff_ids, count):
                                   random.choice(["M", "F"]))
         patient_ids.append(patient.id)
 
-        if random.random() >= 0.7:
-            continue  # 30%는 등록만 하고 진료 기록 없음 (실제 병원처럼)
-
-        num_records = random.randint(1, 6)
+        # 모든 환자가 최소 한 건 이상의 진료 기록을 갖도록 함 (페이지네이션 테스트를 위해 3~14건)
+        num_records = random.randint(3, 14)
         base_weight = random.uniform(50, 95)
         height = round(random.uniform(155, 185), 1)
 
-        for i in range(num_records):
-            days_ago = (num_records - i) * random.randint(10, 30)
-            weight = round(base_weight + random.uniform(-3, 3), 1)
+        for _record_i in range(num_records):
+            days_ago = random.randint(1, 365)
+            weight = round(base_weight + random.uniform(-4, 4), 1)
             add_record(
                 db, patient.id, random.choice(staff_ids), days_ago,
                 weight, height,
@@ -119,7 +125,8 @@ def create_bulk_patients(db, staff_ids, count):
                 diastolic=random.randint(65, 98),
                 blood_sugar=random.randint(75, 140),
                 steps=random.randint(1000, 12000),
-                sleep_hours=round(random.uniform(4.5, 8.5), 1)
+                sleep_hours=round(random.uniform(4.5, 8.5), 1),
+                memo=random.choice(MEMO_POOL) if random.random() < 0.4 else ""
             )
 
     return patient_ids

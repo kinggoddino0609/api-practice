@@ -168,6 +168,14 @@ const patientSearchMsg = document.getElementById("patient-search-msg");
 const patientRegisterPanel = document.getElementById("patient-register-panel");
 const patientRegisterForm = document.getElementById("patient-register-form");
 const patientRegisterMsg = document.getElementById("patient-register-msg");
+const openPatientRegisterBtn = document.getElementById("open-patient-register-btn");
+
+openPatientRegisterBtn.addEventListener("click", () => {
+  patientRegisterPanel.hidden = !patientRegisterPanel.hidden;
+  if (!patientRegisterPanel.hidden) {
+    document.getElementById("pr-name").focus();
+  }
+});
 const patientsTbody = document.getElementById("patients-tbody");
 const patientsPagination = document.getElementById("patients-pagination");
 const patientsPrevBtn = document.getElementById("patients-prev-btn");
@@ -191,11 +199,11 @@ function renderPatientsTable(patients) {
           <td class="mono">${p.birth_date}</td>
           <td>${p.gender === "M" ? "남" : "여"}</td>
           <td class="mono">${p.phone}</td>
-          <td class="actions-cell">
+          <td><div class="actions-cell">
             <button class="icon-btn" data-open="${p.id}" title="차트 열기" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-          </td>
+          </div></td>
         </tr>
       `
     )
@@ -524,11 +532,11 @@ function renderTodayAppointments(appointments) {
               ${apptStatusOptions(a.status)}
             </select>
           </td>
-          <td class="actions-cell">
+          <td><div class="actions-cell">
             <button class="icon-btn" data-delete-appt="${a.id}" title="삭제" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-          </td>
+          </div></td>
         </tr>
       `
     )
@@ -578,9 +586,69 @@ const chartBackBtn = document.getElementById("chart-back-btn");
 const patientInfoBar = document.getElementById("patient-info-bar");
 const chartStatRow = document.getElementById("chart-stat-row");
 const chartRecordsTbody = document.getElementById("chart-records-tbody");
+const chartRecordsPagination = document.getElementById("chart-records-pagination");
+const chartRecordsPrevBtn = document.getElementById("chart-records-prev-btn");
+const chartRecordsNextBtn = document.getElementById("chart-records-next-btn");
+const chartRecordsPageLabel = document.getElementById("chart-records-page-label");
 const chartRecordForm = document.getElementById("chart-record-form");
 const chartRecordMsg = document.getElementById("chart-record-msg");
 const chartTodayLabel = document.getElementById("chart-today-label");
+const memoPopover = document.getElementById("memo-popover");
+
+chartRecordsPrevBtn.addEventListener("click", () => {
+  if (chartRecordsPage > 1) {
+    chartRecordsPage -= 1;
+    renderChartRecordsPage();
+  }
+});
+
+chartRecordsNextBtn.addEventListener("click", () => {
+  chartRecordsPage += 1;
+  renderChartRecordsPage();
+});
+let memoPopoverTrigger = null;
+
+function hideMemoPopover() {
+  memoPopover.hidden = true;
+  memoPopoverTrigger = null;
+}
+
+function showMemoPopover(triggerEl, text) {
+  if (memoPopoverTrigger === triggerEl && !memoPopover.hidden) {
+    hideMemoPopover();
+    return;
+  }
+
+  memoPopover.textContent = text;
+  memoPopover.hidden = false;
+  memoPopoverTrigger = triggerEl;
+
+  const rect = triggerEl.getBoundingClientRect();
+  const popRect = memoPopover.getBoundingClientRect();
+  let top = rect.bottom + 8;
+  let left = rect.left;
+
+  if (left + popRect.width > window.innerWidth - 12) {
+    left = window.innerWidth - popRect.width - 12;
+  }
+  if (top + popRect.height > window.innerHeight - 12) {
+    top = rect.top - popRect.height - 8;
+  }
+
+  memoPopover.style.top = top + "px";
+  memoPopover.style.left = left + "px";
+}
+
+document.addEventListener("click", (e) => {
+  if (memoPopover.hidden) return;
+  if (memoPopoverTrigger && memoPopoverTrigger.contains(e.target)) return;
+  if (memoPopover.contains(e.target)) return;
+  hideMemoPopover();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideMemoPopover();
+});
 
 chartBackBtn.addEventListener("click", () => {
   currentPatient = null;
@@ -623,11 +691,6 @@ function renderChartStatRow(latest) {
 
   chartStatRow.innerHTML = `
     <div class="stat-card">
-      <div class="label">체중</div>
-      <div class="value mono">${latest.weight.toFixed(1)}<span class="unit">kg</span></div>
-      <span class="chip ${sevClass(bmiSev)}">${latest.bmi_category}</span>
-    </div>
-    <div class="stat-card">
       <div class="label">BMI</div>
       <div class="value mono">${latest.bmi.toFixed(1)}</div>
       <span class="chip ${sevClass(bmiSev)}">${latest.bmi_category}</span>
@@ -646,47 +709,60 @@ function renderChartStatRow(latest) {
 }
 
 let chartRecords = [];
+let chartRecordsPage = 1;
+const CHART_RECORDS_PAGE_SIZE = 7;
 
 function renderChartRecordsTable(records) {
   chartRecords = records;
+  chartRecordsPage = 1;
+  renderChartRecordsPage();
+}
 
-  if (records.length === 0) {
+function renderChartRecordsPage() {
+  if (chartRecords.length === 0) {
     chartRecordsTbody.innerHTML =
-      '<tr class="empty-row"><td colspan="7">등록된 기록이 없어요.</td></tr>';
+      '<tr class="empty-row"><td colspan="6">등록된 기록이 없어요.</td></tr>';
+    chartRecordsPagination.hidden = true;
     return;
   }
 
-  const sorted = [...records].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const sorted = [...chartRecords].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / CHART_RECORDS_PAGE_SIZE));
+  chartRecordsPage = Math.min(chartRecordsPage, totalPages);
 
-  chartRecordsTbody.innerHTML = sorted
+  const start = (chartRecordsPage - 1) * CHART_RECORDS_PAGE_SIZE;
+  const pageItems = sorted.slice(start, start + CHART_RECORDS_PAGE_SIZE);
+
+  chartRecordsTbody.innerHTML = pageItems
     .map((r) => {
       const bmiCls = sevClass(severity("bmi", r.bmi_category));
       const bpCls = sevClass(severity("bp", r.bp_category));
       const sugarCls = sevClass(severity("sugar", r.sugar_category));
 
       const hasWarnings = r.warnings && r.warnings.length > 0;
-      const warnIcon = hasWarnings
-        ? `<span class="warn-icon" title="${r.warnings.join(" ")}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 1 21h22L12 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="0.8" fill="currentColor"/></svg>
-          </span>`
-        : "";
+
+      const hasMemo = r.memo && r.memo.trim().length > 0;
+      const memoIcon = hasMemo
+        ? `<button class="memo-icon has-memo" data-memo="${r.id}" type="button" title="소견/메모 보기">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9L14 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v6h6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>`
+        : `<span class="memo-icon is-empty" title="메모 없음">–</span>`;
 
       return `
-        <tr data-id="${r.id}">
+        <tr data-id="${r.id}" class="${hasWarnings ? "risk-row" : ""}">
           <td class="date-cell">${r.date}</td>
-          <td class="num mono">${r.weight.toFixed(1)} <span class="chip ${bmiCls}">${r.bmi_category}</span></td>
-          <td class="num mono">${r.bmi.toFixed(1)} <span class="chip ${bmiCls}">${r.bmi_category}</span></td>
-          <td class="num mono">${r.systolic}/${r.diastolic} <span class="chip ${bpCls}">${r.bp_category}</span></td>
-          <td class="num mono">${r.blood_sugar} <span class="chip ${sugarCls}">${r.sugar_category}</span></td>
-          <td>${warnIcon}</td>
-          <td class="actions-cell">
+          <td class="mono">${r.bmi.toFixed(1)} <span class="chip ${bmiCls}">${r.bmi_category}</span></td>
+          <td class="mono">${r.systolic}/${r.diastolic} <span class="chip ${bpCls}">${r.bp_category}</span></td>
+          <td class="mono">${r.blood_sugar} <span class="chip ${sugarCls}">${r.sugar_category}</span></td>
+          <td>${memoIcon}</td>
+          <td><div class="actions-cell">
             <button class="icon-btn" data-edit="${r.id}" title="수정" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <button class="icon-btn" data-delete="${r.id}" title="삭제" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-          </td>
+          </div></td>
         </tr>
       `;
     })
@@ -702,19 +778,45 @@ function renderChartRecordsTable(records) {
   chartRecordsTbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", () => deleteRecord(btn.dataset.delete));
   });
+
+  chartRecordsTbody.querySelectorAll("[data-memo]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const record = chartRecords.find((r) => String(r.id) === btn.dataset.memo);
+      if (record) showMemoPopover(btn, record.memo);
+    });
+  });
+
+  chartRecordsPagination.hidden = false;
+  chartRecordsPageLabel.textContent = `${chartRecordsPage} / ${totalPages} 페이지 (총 ${sorted.length}건)`;
+  chartRecordsPrevBtn.disabled = chartRecordsPage <= 1;
+  chartRecordsNextBtn.disabled = chartRecordsPage >= totalPages;
 }
 
 const TREND_METRICS = {
   bmi: {
+    axis: { min: 12, max: 35 },
+    bands: [
+      { from: 12, to: 18.5, token: "--warn" },
+      { from: 18.5, to: 23, token: "--good" },
+      { from: 23, to: 25, token: "--warn" },
+      { from: 25, to: 35, token: "--crit" }
+    ],
     getSeries: (recent) => [
       {
         data: recent.map((r) => r.bmi),
         pointSeverity: recent.map((r) => severity("bmi", r.bmi_category)),
-        pointLabels: recent.map((r) => `${r.height}cm/${r.weight.toFixed(1)}kg`)
+        pointLabels: recent.map((r) => `${r.bmi.toFixed(1)} (${r.weight.toFixed(1)}kg·${r.height}cm)`)
       }
     ]
   },
   bp: {
+    axis: { min: 50, max: 180 },
+    bands: [
+      { from: 50, to: 120, token: "--good" },
+      { from: 120, to: 140, token: "--warn" },
+      { from: 140, to: 180, token: "--crit" }
+    ],
     getSeries: (recent) => {
       const sev = recent.map((r) => severity("bp", r.bp_category));
       return [
@@ -733,10 +835,17 @@ const TREND_METRICS = {
     }
   },
   sugar: {
+    axis: { min: 50, max: 220 },
+    bands: [
+      { from: 50, to: 100, token: "--good" },
+      { from: 100, to: 126, token: "--warn" },
+      { from: 126, to: 220, token: "--crit" }
+    ],
     getSeries: (recent) => [
       {
         data: recent.map((r) => r.blood_sugar),
-        pointSeverity: recent.map((r) => severity("sugar", r.sugar_category))
+        pointSeverity: recent.map((r) => severity("sugar", r.sugar_category)),
+        pointLabels: recent.map((r) => String(r.blood_sugar))
       }
     ]
   }
@@ -746,7 +855,12 @@ function sevColorToken(sev) {
   return sev === 2 ? "--crit" : sev === 1 ? "--warn" : "--good";
 }
 
-function renderPointColoredChart(canvas, series) {
+function formatShortDate(dateStr) {
+  const parts = dateStr.split("-");
+  return `${parts[1]}-${parts[2]}`;
+}
+
+function renderPointColoredChart(canvas, series, axis, bands, dates, showBands) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight || canvas.height;
@@ -760,16 +874,30 @@ function renderPointColoredChart(canvas, series) {
   const gridLine = styles.getPropertyValue("--line").trim();
   const surface = styles.getPropertyValue("--surface").trim();
   const lineColor = styles.getPropertyValue("--ink-400").trim();
-  const labelColor = styles.getPropertyValue("--ink-400").trim();
+  const axisLabelColor = styles.getPropertyValue("--ink-400").trim();
+  const pointColor = styles.getPropertyValue("--ink-900").trim();
   const resolve = (token) => styles.getPropertyValue(token).trim();
 
-  const pad = { top: 26, right: 14, bottom: 10, left: 38 };
+  const pad = { top: 22, right: 14, bottom: 24, left: 38 };
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
 
-  const allValues = series.flatMap((s) => s.data);
-  const min = Math.min(...allValues) - 3;
-  const max = Math.max(...allValues) + 3;
+  const min = axis.min;
+  const max = axis.max;
+
+  const yAt = (v) => {
+    const clamped = Math.max(min, Math.min(max, v));
+    return pad.top + plotH * (1 - (clamped - min) / (max - min));
+  };
+
+  if (showBands) {
+    (bands || []).forEach((band) => {
+      const yTop = yAt(band.to);
+      const yBottom = yAt(band.from);
+      ctx.fillStyle = resolve(band.token) + "26";
+      ctx.fillRect(pad.left, yTop, plotW, yBottom - yTop);
+    });
+  }
 
   ctx.strokeStyle = gridLine;
   ctx.lineWidth = 1;
@@ -782,7 +910,7 @@ function renderPointColoredChart(canvas, series) {
     ctx.stroke();
   }
 
-  ctx.fillStyle = labelColor;
+  ctx.fillStyle = axisLabelColor;
   ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
@@ -790,7 +918,15 @@ function renderPointColoredChart(canvas, series) {
   ctx.fillText(Math.round(min), pad.left - 8, h - pad.bottom);
 
   const xAt = (i, len) => (len === 1 ? pad.left + plotW / 2 : pad.left + (plotW / (len - 1)) * i);
-  const yAt = (v) => pad.top + plotH * (1 - (v - min) / (max - min));
+
+  const xLen = dates.length;
+  ctx.fillStyle = axisLabelColor;
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  dates.forEach((d, i) => {
+    ctx.fillText(formatShortDate(d), xAt(i, xLen), h - pad.bottom + 6);
+  });
 
   series.forEach((s) => {
     const data = s.data;
@@ -816,7 +952,7 @@ function renderPointColoredChart(canvas, series) {
       const x = xAt(i, len);
       const y = yAt(v);
       const isLast = i === len - 1;
-      const dotColor = resolve(sevColorToken(s.pointSeverity[i]));
+      const dotColor = s.pointSeverity ? resolve(sevColorToken(s.pointSeverity[i])) : pointColor;
       ctx.beginPath();
       ctx.arc(x, y, isLast ? 5 : 4, 0, Math.PI * 2);
       ctx.fillStyle = dotColor;
@@ -826,8 +962,8 @@ function renderPointColoredChart(canvas, series) {
       ctx.stroke();
 
       if (s.pointLabels) {
-        ctx.fillStyle = labelColor;
-        ctx.font = "9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        ctx.fillStyle = pointColor;
+        ctx.font = "700 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
         ctx.fillText(s.pointLabels[i], x, y - 8);
@@ -837,6 +973,14 @@ function renderPointColoredChart(canvas, series) {
 }
 
 let currentTrendMetric = "bmi";
+let showRiskBands = false;
+const trendBandToggle = document.getElementById("trend-band-toggle");
+
+trendBandToggle.addEventListener("click", () => {
+  showRiskBands = !showRiskBands;
+  trendBandToggle.classList.toggle("is-active", showRiskBands);
+  drawTrendChart(currentTrendMetric, chartRecords);
+});
 
 function drawTrendChart(metric, records) {
   currentTrendMetric = metric;
@@ -855,11 +999,20 @@ function drawTrendChart(metric, records) {
   }
 
   if (!document.getElementById("chart-trend-canvas")) {
-    wrap.innerHTML = '<canvas id="chart-trend-canvas" height="120"></canvas>';
+    wrap.innerHTML = '<canvas id="chart-trend-canvas" height="115"></canvas>';
   }
 
-  const series = TREND_METRICS[metric].getSeries(recent);
-  renderPointColoredChart(document.getElementById("chart-trend-canvas"), series);
+  const config = TREND_METRICS[metric];
+  const series = config.getSeries(recent);
+  const dates = recent.map((r) => r.date);
+  renderPointColoredChart(
+    document.getElementById("chart-trend-canvas"),
+    series,
+    config.axis,
+    config.bands,
+    dates,
+    showRiskBands
+  );
 }
 
 document.getElementById("trend-tabs").addEventListener("click", (e) => {
@@ -867,24 +1020,6 @@ document.getElementById("trend-tabs").addEventListener("click", (e) => {
   if (!btn) return;
   drawTrendChart(btn.dataset.metric, chartRecords);
 });
-
-function renderNormalRangeNote(latest) {
-  const note = document.getElementById("normal-range-note");
-
-  if (!latest) {
-    note.textContent = "";
-    return;
-  }
-
-  const heightM = latest.height / 100;
-  const weightLow = (18.5 * heightM * heightM).toFixed(1);
-  const weightHigh = (22.9 * heightM * heightM).toFixed(1);
-
-  note.innerHTML = `
-    정상 범위 · 체중 ${weightLow}~${weightHigh}kg (키 ${latest.height}cm 기준)<br />
-    BMI 18.5~22.9 · 혈압 120/80 미만 · 공복혈당 100 미만
-  `;
-}
 
 function drawTrendCharts(records) {
   drawTrendChart(currentTrendMetric, records);
@@ -897,7 +1032,6 @@ async function loadPatientChart() {
 
   const latest = [...records].sort((a, b) => (a.date > b.date ? -1 : 1))[0];
   renderChartStatRow(latest);
-  renderNormalRangeNote(latest);
   renderChartRecordsTable(records);
   drawTrendCharts(records);
 }
@@ -1046,11 +1180,11 @@ function renderChartAppointments(appointments) {
               ${apptStatusOptions(a.status)}
             </select>
           </td>
-          <td class="actions-cell">
+          <td><div class="actions-cell">
             <button class="icon-btn" data-delete-chart-appt="${a.id}" title="삭제" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-          </td>
+          </div></td>
         </tr>
       `;
     })
@@ -1161,11 +1295,11 @@ function renderStaffTable(staffList) {
           <td>${s.name}</td>
           <td class="mono">${s.name}1234</td>
           <td><span class="role-pip role-${s.role}">${ROLE_LABEL[s.role] || s.role}</span></td>
-          <td class="actions-cell">
+          <td><div class="actions-cell">
             <button class="icon-btn" data-delete="${s.id}" title="해고" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-          </td>
+          </div></td>
         </tr>
       `
     )
@@ -1288,6 +1422,88 @@ function renderHospitalStats(data) {
 
   drawVisitsTrend(data.daily_visits);
   renderTopDoctors(data.top_doctors_this_month);
+}
+
+function renderLineChart(canvas, seriesList) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight || canvas.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const styles = getComputedStyle(document.documentElement);
+  const gridLine = styles.getPropertyValue("--line").trim();
+  const surface = styles.getPropertyValue("--surface").trim();
+
+  const pad = { top: 12, right: 12, bottom: 8, left: 12 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  const allValues = seriesList.flatMap((s) => s.data);
+  const min = Math.min(0, ...allValues);
+  const max = Math.max(...allValues) + 1;
+
+  ctx.strokeStyle = gridLine;
+  ctx.lineWidth = 1;
+  const rows = 2;
+  for (let r = 0; r <= rows; r++) {
+    const y = pad.top + (plotH / rows) * r;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y + 0.5);
+    ctx.lineTo(w - pad.right, y + 0.5);
+    ctx.stroke();
+  }
+
+  seriesList.forEach((s) => {
+    const data = s.data;
+    const len = data.length;
+    const xAt = (i) => (len === 1 ? pad.left + plotW / 2 : pad.left + (plotW / (len - 1)) * i);
+    const yAt = (v) => pad.top + plotH * (1 - (v - min) / (max - min || 1));
+
+    if (s.fill && len >= 2) {
+      const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+      grad.addColorStop(0, s.color + "33");
+      grad.addColorStop(1, s.color + "00");
+      ctx.beginPath();
+      ctx.moveTo(xAt(0), yAt(data[0]));
+      data.forEach((v, i) => ctx.lineTo(xAt(i), yAt(v)));
+      ctx.lineTo(xAt(len - 1), h - pad.bottom);
+      ctx.lineTo(xAt(0), h - pad.bottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    if (len >= 2) {
+      ctx.beginPath();
+      data.forEach((v, i) => {
+        const x = xAt(i);
+        const y = yAt(v);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+
+    data.forEach((v, i) => {
+      const x = xAt(i);
+      const y = yAt(v);
+      const isLast = i === len - 1;
+      ctx.beginPath();
+      ctx.arc(x, y, isLast ? 3.5 : 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = isLast ? s.color : surface;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.3;
+      ctx.fill();
+      ctx.stroke();
+    });
+  });
 }
 
 function drawVisitsTrend(dailyVisits) {
